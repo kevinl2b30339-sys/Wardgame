@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>查房風雲 Ward Rounds - 國考事件突發版</title>
+    <style>
+        /* 全螢幕鎖定與 Flexbox 排版 */
+        body { background-color: #f4f7f6; font-family: "微軟正黑體", sans-serif; text-align: center; margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* 基礎卡牌樣式 */
+        .card { border: 2px solid #2c3e50; padding: 4px; margin: 2px; display: inline-block; background: white; border-radius: 8px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); width: 80px; vertical-align: top; position: relative; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; user-select: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 105px;}
+        .card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .card.selected { border-color: #e74c3c; transform: translateY(-10px); box-shadow: 0 10px 20px rgba(231, 76, 60, 0.4); }
+        
+        .card-img-container { width: 100%; height: 45px; display: flex; justify-content: center; align-items: center; margin-bottom: 2px; overflow: hidden; border-radius: 4px; position: relative; background-color: #f8f9fa;}
+        .card-img-container img { max-width: 100%; max-height: 100%; object-fit: contain; position: relative; z-index: 2; background-color: white;}
+        .fallback-icon { position: absolute; z-index: 1; font-size: 28px; opacity: 0.8;}
+        
+        .card-title { font-size: 12px; font-weight: bold; margin-bottom: 2px; text-align: center; line-height: 1.1;}
+        .card-type-badge { display: inline-block; background: #eee; padding: 2px 6px; border-radius: 10px; font-size: 10px; font-weight: bold; margin-top: auto;}
+        .action-desc { font-size: 9px; color: #c0392b; margin-top: 3px; font-weight: bold; text-align: center; line-height: 1.1;}
+
+        /* 玩家手牌放大專屬樣式 */
+        #hand-cards .card, #action-hand-cards .card { width: 105px; min-height: 150px; padding: 6px;}
+        #hand-cards .card-img-container, #action-hand-cards .card-img-container { height: 75px; margin-bottom: 5px;}
+        #hand-cards .card-title, #action-hand-cards .card-title { font-size: 15px; }
+        #action-hand-cards .action-desc { font-size: 11px; }
+
+        /* 卡牌邊框顏色 */
+        .type-CC { border-top: 6px solid #e74c3c; } .type-Sx { border-top: 6px solid #f1c40f; } .type-Dx { border-top: 6px solid #9b59b6; } .type-Tx { border-top: 6px solid #2ecc71; }
+        .type-Action { border: 2px solid #c0392b; background-color: #fff5f5; }
+        .type-Wildcard { border-top: 6px solid #e67e22; background-color: #fdf2e9; border-color: #d35400;}
+
+        /* 動畫系統 */
+        @keyframes popIn { 0% { transform: translateY(-40px) scale(0.8); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+        .animate-enter { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes flyOut { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.5) translateY(-80px) rotate(15deg); opacity: 0; } }
+        .animate-exit { animation: flyOut 0.3s forwards; pointer-events: none; }
+        @keyframes floatUp { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.1) translateY(-100px); opacity: 0; filter: blur(2px); } }
+        .animate-admit { animation: floatUp 0.4s forwards; pointer-events: none; }
+
+        /* 特效 */
+        @keyframes pulse-border {
+            0% { border-color: rgba(230, 126, 34, 0.5); box-shadow: 0 0 5px rgba(230, 126, 34, 0.5); }
+            50% { border-color: rgba(230, 126, 34, 1); box-shadow: 0 0 15px rgba(230, 126, 34, 1); }
+            100% { border-color: rgba(230, 126, 34, 0.5); box-shadow: 0 0 5px rgba(230, 126, 34, 0.5); }
+        }
+
+        /* 螢幕警報閃爍特效 */
+        @keyframes alarmFlash { 0% { background-color: transparent; } 50% { background-color: var(--flash-color); } 100% { background-color: transparent; } }
+        #flash-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 8000; }
+        .flashing { display: block !important; animation: alarmFlash 1s infinite; }
+
+        /* 版面區塊劃分 */
+        h2 { font-size: 15px; margin: 2px 0; color: #2c3e50;}
+        .hand-container { border: 1px dashed #ccc; padding: 5px; margin: 2px auto; background-color: #fff; display: flex; flex-wrap: wrap; justify-content: center; align-items: center;}
+        
+        #opponents-container { display: flex; justify-content: space-around; width: 100%; padding: 5px 0; background: #e8eaed; flex-shrink: 0;}
+        .bot-area { flex: 1; background-color: #fff; border: 2px solid #bdc3c7; padding: 4px; margin: 0 4px; border-radius: 8px; position: relative; }
+        .bot-area.active-turn { border-color: #e67e22; box-shadow: 0 0 10px rgba(230, 126, 34, 0.4); background-color: #fdf2e9; }
+        .bot-card-back { background-color: #7f8c8d; color: white; border: 1px solid #2c3e50; width: 18px; height: 26px; display: inline-block; margin: 1px; border-radius: 3px; font-size: 8px; line-height: 26px;}
+        .bot-case-card { display: inline-block; background: #fff; border: 1px solid #7f8c8d; padding: 2px 4px; border-radius: 4px; font-size: 11px; margin: 1px; }
+
+        /* 中央資訊區 */
+        #center-zone { display: flex; justify-content: center; align-items: center; gap: 30px; flex-shrink: 0; padding: 5px 0; background: #ecf0f1; border-bottom: 2px solid #bdc3c7;}
+        #discard-pile { background-color: #fff; border: 2px dashed #95a5a6; padding: 5px; border-radius: 8px; cursor: pointer; min-height: 70px; width: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center;}
+        
+        #event-timer-box { background: #34495e; color: white; padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); border: 2px solid #f1c40f;}
+
+        /* 玩家操作區 */
+        #player-zone { flex-grow: 1; display: flex; flex-direction: column; padding: 5px; background: #f4f7f6; overflow: hidden;}
+        
+        #table-cards-container { width: 98%; margin: 0 auto 5px auto; }
+        #table-cards { min-height: 40px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; background: #fafafa; padding: 5px;}
+
+        /* 控制列 */
+        .control-bar { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 5px 0; flex-wrap: wrap; flex-shrink: 0;}
+        .btn-action { font-size: 14px; padding: 6px 15px; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s;}
+        .btn-action:hover { filter: brightness(1.1); transform: scale(1.05);}
+        .btn-action.disabled { background-color: #95a5a6 !important; cursor: not-allowed; transform: none;}
+        #draw-btn { background-color: #3498db; font-size: 15px; }
+        #admit-btn { background-color: #2ecc71; } 
+        #discard-btn { background-color: #e74c3c; } 
+        #end-btn { background-color: #8e44ad; } 
+        #guide-btn { background-color: #f39c12; }
+
+        /* 雙區並列版面配置 */
+        #dual-hand-zone { display: flex; justify-content: space-between; width: 98%; margin: 0 auto; flex-grow: 1; gap: 10px; overflow: hidden;}
+        .hand-column { display: flex; flex-direction: column; height: 100%; border-radius: 8px; overflow: hidden;}
+        .hand-column-title { background: #34495e; color: white; padding: 5px; font-size: 14px; font-weight: bold; border-top-left-radius: 8px; border-top-right-radius: 8px; margin: 0; display: flex; justify-content: space-between; align-items: center;}
+        
+        #med-hand-col { flex: 7; background: #eafaf1; border: 2px solid #2ecc71;}
+        #hand-cards { width: 100%; height: 100%; margin: 0; padding: 10px; background: transparent; border: none; align-content: flex-start; overflow-y: auto;}
+
+        #act-hand-col { flex: 3; background: #fdedec; border: 2px solid #e74c3c;}
+        #action-hand-cards { width: 100%; height: 100%; margin: 0; padding: 10px; background: transparent; border: none; align-content: flex-start; overflow-y: auto;}
+
+        /* 彈窗覆蓋層 */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 3000; }
+        .modal-content { background: white; width: 90%; max-width: 600px; margin: 40px auto; padding: 20px; border-radius: 10px; max-height: 80vh; overflow-y: auto; text-align: left; box-shadow: 0 5px 15px rgba(0,0,0,0.5); font-size: 14px; position: relative;}
+        
+        #start-screen, #game-over-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #2c3e50; color: white; z-index: 2000; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        #game-wrapper { display: none; height: 100%; width: 100%; flex-direction: column;}
+        .card.dragging { opacity: 0.5; }
+        .player-turn-highlight { box-shadow: 0 0 15px #e67e22 !important; border: 2px solid #fff !important; }
+
+        #toast-container { position: fixed; top: 10px; right: 10px; z-index: 9999; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; }
+        .toast { background: rgba(0,0,0,0.85); color: white; padding: 10px 15px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); animation: slideInRight 0.3s forwards, fadeOutRight 0.5s 3.5s forwards; font-size: 14px; border: 1px solid #34495e;}
+        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOutRight { to { transform: translateX(100%); opacity: 0; } }
+
+        #cinematic-overlay, #start-turn-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; flex-direction: column; }
+        .cinematic-text { color: white; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 8px black; animation: popIn 0.5s forwards; text-align: center; margin-top: 15px;}
+        .cinematic-card-display { transform: scale(4.5); margin-bottom: 180px; box-shadow: 0 0 80px #e74c3c; border-color: #e74c3c; pointer-events: none; animation: popIn 0.4s forwards; background: #fff; border-width: 3px; min-height: 120px;}
+        
+        /* 宣告回合的巨型文字 */
+        .start-turn-text { font-size: 60px; font-weight: bold; color: #f1c40f; text-shadow: 4px 4px 15px black; animation: popIn 0.5s forwards; }
+
+        .revealed-box { cursor: pointer; padding: 2px; border: 2px dashed #e67e22; border-radius: 5px; background: rgba(230, 126, 34, 0.1); transition: 0.2s; animation: pulse-border 1.5s infinite; }
+        .revealed-box:hover { background: rgba(230, 126, 34, 0.3); transform: scale(1.05); }
+
+        .exchange-selection-area .card { transform: scale(0.85); margin: -5px; border-width: 3px; }
+
+        /* 臨床指引表格樣式 */
+        .guide-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .guide-table th, .guide-table td { border: 1px solid #bdc3c7; padding: 8px; text-align: center; font-size: 13px; color: #2c3e50;}
+        .guide-table th { background-color: #ecf0f1; font-weight: bold; }
+        .guide-table tbody tr:nth-child(even) { background-color: #f9f9f9; }
+        .guide-table tbody tr:hover { background-color: #eafaf1; }
+
+        /* 事件考題 Modal 專屬樣式 */
+        #quiz-modal { z-index: 9999; }
+        #quiz-modal .modal-content { max-width: 700px; border: 4px solid #e74c3c; box-shadow: 0 0 30px rgba(231, 76, 60, 0.6); }
+        .quiz-option { display: block; width: 100%; text-align: left; padding: 12px; margin: 8px 0; font-size: 15px; border: 2px solid #bdc3c7; border-radius: 8px; background: #fff; cursor: pointer; transition: 0.2s; color: #2c3e50; font-weight: bold;}
+        .quiz-option:hover { background: #fdf2e9; border-color: #e67e22; transform: scale(1.02); }
+        
+        /* 倒數計時進度條 */
+        #quiz-timer-bar-container { width: 100%; height: 10px; background-color: #eee; border-radius: 5px; margin-bottom: 15px; overflow: hidden; }
+        #quiz-timer-bar { height: 100%; background-color: #e74c3c; width: 100%; transition: width 1s linear; }
+
+        /* 國考趨勢分析按鈕樣式 */
+        .study-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #e67e22; /* 顯眼的橘色 */
+            border: none;
+            border-radius: 8px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .study-btn:hover {
+            background-color: #d35400;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="flash-overlay"></div>
+    <div id="toast-container"></div>
+    <div id="cinematic-overlay"><div id="cinematic-content" style="display:flex; flex-direction:column; align-items:center;"></div></div>
+    
+    <div id="start-turn-overlay">
+        <div id="start-turn-msg" class="start-turn-text"></div>
+    </div>
+
+    <div id="start-screen">
+        <h1 style="font-size: 48px; margin-bottom: 10px;">🏥 查房風雲</h1>
+        <h2 style="color: #f1c40f; margin-top: 0;">國考事件突發版 </h2>
+        <p style="margin-bottom: 30px;">八大內科突發事件 × 殘酷國考考驗！</p>
+        <div>
+            <button class="btn-action" style="font-size: 24px; padding: 15px 40px; background-color: #2ecc71; margin-right: 10px;" onclick="startGame()">▶️ 開始遊戲</button>
+            <button class="btn-action" style="font-size: 24px; padding: 15px 40px; background-color: #3498db;" onclick="showTutorialModal()">📖 遊戲教學</button>
+        </div>
+    </div>
+
+    <div id="game-over-screen" style="display: none;">
+        <h1 id="victory-title" style="font-size: 48px; margin-bottom: 10px;"></h1>
+        <p id="victory-desc" style="font-size: 20px; margin-bottom: 30px;"></p>
+        <button class="btn-action" style="font-size: 20px; padding: 10px 30px; background-color: #3498db;" onclick="location.reload()">🔄 再玩一局</button>
+        <a id="study-link" href="https://drive.google.com/file/d/165W8Jp0oNkYYtHTn1_k49HqZ4cOckktm/view?usp=drive_link" target="_blank" class="study-btn" style="display: none;">
+            📚 下載：2014~2024醫師二階國考趨勢分析-內科
+        </a>
+    </div>
+
+    <div id="discard-modal" class="modal" onclick="closeModal('discard-modal')">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="text-align:center;">🗑️ 棄牌堆歷史紀錄</h3>
+            <div id="discard-list" style="margin-bottom: 20px;"></div>
+            <div style="text-align:center;"><button class="btn-action" style="background:#34495e;" onclick="closeModal('discard-modal')">關閉</button></div>
+        </div>
+    </div>
+    
+    <div id="tutorial-modal" class="modal" onclick="closeModal('tutorial-modal')">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 650px;">
+            <h2 style="color: #2c3e50; text-align: center; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px;">📖 《查房風雲》遊戲教學</h2>
+            <div style="line-height: 1.6; color: #34495e; text-align: left; padding: 0 10px;">
+                <h3 style="color: #e67e22;">🎯 遊戲目標</h3>
+                <p>率先成功收治 <strong>2 床</strong>病人的玩家，即可宣告勝利，提早洗手下班！</p>
+                <h3 style="color: #e67e22;">🕹️ 回合流程</h3>
+                <ol>
+                    <li><strong>查房 (必執行)</strong>：回合開始時，點擊「📦 抽醫學牌」抽取一張牌。</li>
+                    <li><strong>行動 (選執行)</strong>：每回合最多可主動打出 <strong>1 張</strong>功能牌。若手牌滿足【臨床指引】條件，可點擊「🩺 宣告收治」。(收治後可繼續行動直到結束回合)</li>
+                    <li><strong>結束回合</strong>：若手牌超過上限 (預設 7 張)，丟棄多餘手牌後點擊結束。</li>
+                </ol>
+                <h3 style="color: #8e44ad;">🚨 突發事件 (Event)</h3>
+                <p>第 2 回合將爆發第一次危機，之後每 3 或 4 回合隨機爆發全院科別危機！你與 AI 同事需回答彈出的國考題，AI 有 60% 機率答對。答對可獲得特權，答錯則面臨懲罰！<strong style="color:red;">請注意：作答時間只有 30 秒！</strong></p>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn-action" style="background:#34495e; font-size:16px; padding:10px 30px;" onclick="closeModal('tutorial-modal')">我知道了，準備查房！</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="guide-modal" class="modal" onclick="closeModal('guide-modal')">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 850px;">
+            <h3 style="text-align:center; color: #2c3e50; margin-bottom: 5px;">📖 臨床指引 (可收治的經典病歷)</h3>
+            <p style="color:#e67e22; font-weight:bold; text-align:center; margin-top: 0; font-size: 13px;">⚠️ 限制：一床病患最多只能使用 1 張【會診單】！若使用 DNR 免治 3 張牌方案則不可使用會診單。</p>
+            <table class="guide-table">
+                <thead>
+                    <tr><th>科別</th><th>經典病歷 (Case)</th><th>⬜ 主訴 (CC)</th><th>🔬 症狀/檢驗 (Sx/Lab)</th><th>📋 診斷 (Dx)</th><th>💊 治療 (Tx)</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>🩸 腎臟</td><td><strong>腎病症候群</strong></td><td>下肢水腫</td><td>蛋白尿</td><td>腎病症候群</td><td>類固醇</td></tr>
+                    <tr><td>🩸 腎臟</td><td><strong>急性腎損傷(AKI)</strong></td><td>寡尿 或 下肢水腫</td><td>EGFR驟降</td><td>急性腎損傷(AKI)</td><td>血液透析</td></tr>
+                    <tr><td>🫀 心臟</td><td><strong>急性心肌梗塞</strong></td><td>胸痛</td><td>ST段上升</td><td>急性心肌梗塞(AMI)</td><td>心導管介入 或 硝酸甘油</td></tr>
+                    <tr><td>🫀 心臟</td><td><strong>鬱血性心衰竭</strong></td><td>喘 或 下肢水腫</td><td>頸靜脈怒張</td><td>鬱血性心衰竭(CHF)</td><td>利尿劑 或 硝酸甘油</td></tr>
+                    <tr><td>🫁 胸腔</td><td><strong>氣道阻塞</strong></td><td>喘</td><td>肺部喘鳴聲</td><td>COPD急性發作 或 氣喘急性發作</td><td>氣管擴張劑</td></tr>
+                    <tr><td>🫁 胸腔</td><td><strong>嚴重肺炎</strong></td><td>發燒 或 喘</td><td>肺部浸潤 或 肺部濕鑼音</td><td>肺炎</td><td>抗生素</td></tr>
+                    <tr><td>🟨 腸胃</td><td><strong>急性腹症</strong></td><td>腹痛 或 發燒</td><td>腹部壓痛</td><td>膽囊炎 或 闌尾炎</td><td>照會一般外科 或 抗生素</td></tr>
+                    <tr><td>🟨 腸胃</td><td><strong>肝硬化合併腹水</strong></td><td>下肢水腫</td><td>腹水</td><td>肝硬化</td><td>抽腹水 或 利尿劑</td></tr>
+                </tbody>
+            </table>
+            <div style="text-align:center; margin-top: 15px;"><button class="btn-action" style="background:#34495e;" onclick="closeModal('guide-modal')">關閉指引</button></div>
+        </div>
+    </div>
+
+    <div id="quiz-modal" class="modal">
+        <div class="modal-content" style="text-align: left;">
+            <h2 id="quiz-dept-title" style="color: #c0392b; margin-top: 0; text-align: center;">🚨 科別事件</h2>
+            <div id="quiz-timer-bar-container"><div id="quiz-timer-bar"></div></div>
+            
+            <div id="quiz-scenario" style="background: #fdedec; padding: 10px; border-radius: 5px; font-size: 13px; margin-bottom: 10px; color: #c0392b;">情境...</div>
+            <div id="quiz-global" style="background: #eafaf1; border-left: 5px solid #2ecc71; padding: 10px; font-size: 14px; margin-bottom: 15px; font-weight: bold;">全場效果...</div>
+            <h3 style="color: #2c3e50; font-size: 16px;">❓ 國考大考驗：</h3>
+            <p id="quiz-question-text" style="font-size: 15px; font-weight: bold; color: #34495e;">題目內容...</p>
+            <div id="quiz-options-container" style="display: flex; flex-direction: column;"></div>
+        </div>
+    </div>
+
+    <div id="target-modal" class="modal"><div class="modal-content" style="max-width: 400px; text-align: center;"><h3>🎯 選擇你要發動的目標</h3><div id="target-buttons" style="margin: 20px 0;"></div><button class="btn-action" style="background:#95a5a6;" onclick="cancelTargetSelection()">取消</button></div></div>
+    
+    <div id="reveal-modal" class="modal" onclick="closeModal('reveal-modal')"><div class="modal-content" style="text-align: center; max-width: 900px; background: #fdf2e9; border: 3px solid #e67e22;" onclick="event.stopPropagation()"><h3 style="color:#d35400; font-size: 26px; margin-top: 0;">👀 <span id="reveal-target-name"></span> 的隱藏手牌</h3><p style="font-size: 14px; color: #7f8c8d;">(已被【報 Case】或事件公開！)</p><div id="reveal-hand-container" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin: 20px 0; min-height: 180px;"></div><button class="btn-action" style="background:#c0392b; font-size: 18px; padding: 10px 40px;" onclick="closeModal('reveal-modal')">❌ 關閉</button></div></div>
+    
+    <div id="select-card-modal" class="modal"><div class="modal-content" style="max-width: 500px; text-align: center;"><h3 id="select-card-title" style="color: #2c3e50;">標題</h3><p id="select-card-msg" style="color: #7f8c8d; font-weight: bold;">訊息</p><div id="select-card-container" style="display: flex; justify-content: center; flex-wrap:wrap; gap: 15px; margin: 20px 0; min-height: 150px;"></div></div></div>
+    
+    <div id="exchange-card-modal" class="modal"><div class="modal-content exchange-selection-area" style="max-width: 700px; text-align: center;"><h3>📝 <span id="exchange-main-title">選擇換牌</span></h3><p style="color: #7f8c8d; font-size: 12px;" id="exchange-modal-desc">請各點擊選擇一張卡牌進行交換</p><div style="display: flex; justify-content: space-between; gap: 20px;"><div style="flex: 1; border: 2px dashed #e74c3c; padding: 10px; border-radius: 8px; background: #fdedec;"><h4 style="margin-top:0; color:#c0392b;" id="exchange-left-title">1. 你的手牌</h4><div id="exchange-hand-container" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;"></div></div><div id="exchange-right-panel" style="flex: 1; border: 2px dashed #3498db; padding: 10px; border-radius: 8px; background: #eafaf1;"><h4 style="margin-top:0; color:#2980b9;" id="exchange-target-title">2. 目標卡牌</h4><div id="exchange-discard-container" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;"></div></div></div><div style="margin-top: 20px;"><button class="btn-action" style="background:#3498db; font-size:18px; padding: 10px 40px;" onclick="confirmExchange()">確定選擇</button><button class="btn-action" style="background:#95a5a6; font-size:14px; padding: 10px 20px;" onclick="cancelExchange()">取消</button></div></div></div>
+
+    <div id="game-wrapper">
+        <div id="opponents-container"></div>
+
+        <div id="center-zone">
+            <div id="event-timer-box">⏳ 下次突發事件：<span id="event-countdown" style="color:#f1c40f; font-size:18px;"></span> 輪後</div>
+            <div id="turn-announcement" style="font-size: 18px; font-weight: bold; color: #e67e22; letter-spacing: 1px;">準備開始...</div>
+            <div id="discard-pile" onclick="showDiscardModal()">🗑️ 醫學棄牌區</div>
+        </div>
+
+        <div id="player-zone">
+            <div id="table-cards-container">
+                <h2 style="text-align: left; margin-left: 10px;">🛏️ 你的病床區 (已收治)</h2>
+                <div id="table-cards" class="hand-container">目前無病人收治</div>
+            </div>
+
+            <div class="control-bar">
+                <button id="draw-btn" class="btn-action" onclick="drawMedicalCard()">📦 1. 抽牌 <span id="med-deck-count" style="font-size:11px; font-weight:normal;"></span></button>
+                <button id="guide-btn" class="btn-action" onclick="showGuideModal()">📖 臨床指引</button>
+                <button id="admit-btn" class="btn-action" onclick="admitPatient()">🩺 2. 宣告收治</button>
+                <button id="discard-btn" class="btn-action" onclick="discardCard()">🗑️ 3. 棄牌 (超過上限時)</button>
+                <button id="end-btn" class="btn-action" onclick="endTurn()">➡️ 4. 結束回合</button>
+            </div>
+            
+            <div id="dual-hand-zone">
+                <div id="med-hand-col" class="hand-column">
+                    <h3 class="hand-column-title">
+                        <span>🩺 你的醫學手牌 <span id="medical-count-display"></span> <span id="dnr-status" style="color:#ff7675; font-size:12px;"></span></span>
+                        <span style="font-size: 11px; font-weight: normal; color: #bdc3c7;">(可拖曳排序)</span>
+                    </h3>
+                    <div id="hand-cards" class="hand-container"></div>
+                </div>
+
+                <div id="act-hand-col" class="hand-column">
+                    <h3 class="hand-column-title" style="background: #c0392b;">
+                        <span>📱 功能手牌 <span id="action-count-display"></span></span>
+                        <span style="font-size: 11px; font-weight: normal; color: #bdc3c7;">(牌庫剩 <span id="act-deck-count"></span> 張)</span>
+                    </h3>
+                    <div id="action-hand-cards" class="hand-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+        function generateImgHtml(card) {
+            let defaultEmoji = "💊";
+            if(card.type === "CC") defaultEmoji = "🤕";
+            if(card.type === "Sx") defaultEmoji = "🔬";
+            if(card.type === "Dx") defaultEmoji = "📋";
+            if(card.type === "Tx") defaultEmoji = "💉";
+            if(card.type === "Wildcard") defaultEmoji = "🃏";
+            if(card.type === "Action") defaultEmoji = "⚡";
+            
+            return `
+            <div class="card-img-container">
+                <span class="fallback-icon">${defaultEmoji}</span>
+                <img src="${card.img}" onerror="this.style.display='none'">
+            </div>`;
+        }
+
+        function showToast(msg) {
+            let container = document.getElementById("toast-container");
+            let toast = document.createElement("div");
+            toast.className = "toast"; toast.innerHTML = msg;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        function showTutorialModal() {
+            document.getElementById("tutorial-modal").style.display = "block";
+        }
+
+        // 🌟 延長動畫時間為 3.5 秒
+        function playCinematicAsync(card, userName, msg) {
+            return new Promise(resolve => {
+                let overlay = document.getElementById("cinematic-overlay");
+                let content = document.getElementById("cinematic-content");
+                let imgHtml = generateImgHtml(card);
+                
+                content.innerHTML = `
+                    <div class="card type-Action cinematic-card-display" style="width: 130px; padding: 10px;">
+                        ${imgHtml}
+                        <div class="card-title" style="font-size: 18px; color: #000; margin-bottom: 5px;">${card.name}</div>
+                        <div class="card-type-badge" style="font-size:12px; margin-bottom:5px;">狀態牌</div>
+                        <div class="action-desc" style="font-size: 11px; color: #c0392b;">${card.desc}</div>
+                    </div>
+                    <div class="cinematic-text">
+                        ${userName}<br>
+                        <span style="font-size:42px; color:#f1c40f;">${msg}</span>
+                    </div>
+                `;
+                overlay.style.display = "flex";
+                setTimeout(() => {
+                    overlay.style.display = "none";
+                    resolve();
+                }, 3500); 
+            });
+        }
+
+        const typeMap = { "CC": "主訴", "Sx": "症狀", "Dx": "診斷", "Tx": "治療", "Wildcard": "會診單", "Action": "功能牌" };
+        const validRecipes = [
+            { name: "腎病症候群", cc: ["下肢水腫"], sx: ["蛋白尿"], dx: ["腎病症候群"], tx: ["類固醇"] },
+            { name: "急性腎損傷(AKI)", cc: ["寡尿", "下肢水腫"], sx: ["EGFR驟降"], dx: ["急性腎損傷(AKI)"], tx: ["血液透析"] },
+            { name: "急性心肌梗塞", cc: ["胸痛"], sx: ["ST段上升"], dx: ["急性心肌梗塞(AMI)"], tx: ["心導管介入", "硝酸甘油"] },
+            { name: "鬱血性心衰竭", cc: ["喘", "下肢水腫"], sx: ["頸靜脈怒張"], dx: ["鬱血性心衰竭(CHF)"], tx: ["利尿劑", "硝酸甘油"] },
+            { name: "氣道阻塞", cc: ["喘"], sx: ["肺部喘鳴聲"], dx: ["COPD急性發作", "氣喘急性發作"], tx: ["氣管擴張劑"] },
+            { name: "嚴重肺炎", cc: ["發燒", "喘"], sx: ["肺部浸潤", "肺部濕鑼音"], dx: ["肺炎"], tx: ["抗生素"] },
+            { name: "急性腹症", cc: ["腹痛", "發燒"], sx: ["腹部壓痛"], dx: ["膽囊炎", "闌尾炎"], tx: ["照會一般外科", "抗生素"] },
+            { name: "肝硬化合併腹水", cc: ["下肢水腫"], sx: ["腹水"], dx: ["肝硬化"], tx: ["抽腹水", "利尿劑"] }
+        ];
+
+        // 🌟 實裝精確數量的醫學牌庫 (總數 131 張)
+        const medicalDeckBlueprint = [
+            { type: "CC", name: "下肢水腫", count: 7, img: "images/cc_edema.png" }, 
+            { type: "CC", name: "喘", count: 6, img: "images/cc_dyspnea.png" }, 
+            { type: "CC", name: "發燒", count: 4, img: "images/cc_fever.png" }, 
+            { type: "CC", name: "寡尿", count: 3, img: "images/cc_oliguria.png" }, 
+            { type: "CC", name: "胸痛", count: 3, img: "images/cc_chestpain.png" }, 
+            { type: "CC", name: "腹痛", count: 3, img: "images/cc_abdpain.png" },
+            
+            { type: "Sx", name: "蛋白尿", count: 4, img: "images/sx_proteinuria.png" }, 
+            { type: "Sx", name: "EGFR驟降", count: 4, img: "images/sx_egfr.png" }, 
+            { type: "Sx", name: "ST段上升", count: 4, img: "images/sx_st.png" }, 
+            { type: "Sx", name: "頸靜脈怒張", count: 4, img: "images/sx_jvd.png" }, 
+            { type: "Sx", name: "肺部喘鳴聲", count: 4, img: "images/sx_wheezing.png" }, 
+            { type: "Sx", name: "肺部浸潤", count: 4, img: "images/sx_infiltration.png" }, 
+            { type: "Sx", name: "肺部濕鑼音", count: 4, img: "images/sx_rales.png" }, 
+            { type: "Sx", name: "腹部壓痛", count: 4, img: "images/sx_tenderness.png" }, 
+            { type: "Sx", name: "腹水", count: 4, img: "images/sx_ascites.png" },
+            
+            { type: "Dx", name: "腎病症候群", count: 3, img: "images/dx_ns.png" }, 
+            { type: "Dx", name: "急性腎損傷(AKI)", count: 3, img: "images/dx_aki.png" }, 
+            { type: "Dx", name: "急性心肌梗塞(AMI)", count: 3, img: "images/dx_ami.png" }, 
+            { type: "Dx", name: "鬱血性心衰竭(CHF)", count: 3, img: "images/dx_chf.png" }, 
+            { type: "Dx", name: "COPD急性發作", count: 3, img: "images/dx_copd.png" }, 
+            { type: "Dx", name: "氣喘急性發作", count: 3, img: "images/dx_asthma.png" }, 
+            { type: "Dx", name: "肺炎", count: 3, img: "images/dx_pneumonia.png" }, 
+            { type: "Dx", name: "膽囊炎", count: 3, img: "images/dx_cholecystitis.png" }, 
+            { type: "Dx", name: "闌尾炎", count: 3, img: "images/dx_appendicitis.png" }, 
+            { type: "Dx", name: "肝硬化", count: 3, img: "images/dx_cirrhosis.png" },
+            
+            { type: "Tx", name: "抗生素", count: 5, img: "images/tx_antibiotics.png" }, 
+            { type: "Tx", name: "硝酸甘油", count: 5, img: "images/tx_ntg.png" }, 
+            { type: "Tx", name: "利尿劑", count: 5, img: "images/tx_diuretic.png" }, 
+            { type: "Tx", name: "類固醇", count: 3, img: "images/tx_steroid.png" }, 
+            { type: "Tx", name: "血液透析", count: 3, img: "images/tx_hemo.png" }, 
+            { type: "Tx", name: "心導管介入", count: 3, img: "images/tx_pci.png" }, 
+            { type: "Tx", name: "氣管擴張劑", count: 3, img: "images/tx_bronchodilator.png" }, 
+            { type: "Tx", name: "照會一般外科", count: 3, img: "images/tx_gs.png" }, 
+            { type: "Tx", name: "抽腹水", count: 3, img: "images/tx_paracentesis.png" },
+            
+            { type: "Wildcard", name: "會診單", count: 8, img: "images/act_wildcard.png" }
+        ];
+
+        // 🌟 實裝精確數量的功能牌庫 (總數 54 張)
+        const actionDeckBlueprint = [
+            { type: "Action", name: "Call上線", desc: "檢視頂端3張選1張加入，其餘洗回", effectId: "call", cat: "buff", count: 4, img: "images/act_call.png" },
+            { type: "Action", name: "Combine", desc: "檢視頂端2張選1張加入，另1張棄置", effectId: "combine", cat: "buff", count: 4, img: "images/act_combine.png" },
+            { type: "Action", name: "補病歷", desc: "棄置1張手牌，撿回2回合內1張棄牌", effectId: "chart", cat: "buff", count: 4, img: "images/act_chart.png" },
+            { type: "Action", name: "我愛加班", desc: "棄1張醫學牌，指定抽取 CC/Sx/Dx/Tx 牌", effectId: "duty", cat: "buff", count: 4, img: "images/act_duty.png" },
+            
+            { type: "Action", name: "Seminar", desc: "你的醫學牌上限+1", effectId: "seminar", cat: "buff", count: 3, img: "images/act_seminar.png" },
+            { type: "Action", name: "報 Case", desc: "使指定對手的手牌向所有人公開一回合", effectId: "report", cat: "attack", count: 3, img: "images/act_report.png" }, 
+            { type: "Action", name: "分奴", desc: "指定對手棄置一張主訴(CC)牌，對手再抽1張", effectId: "tryhard", cat: "attack", count: 3, img: "images/act_tryhard.png" },
+            { type: "Action", name: "抄模板", desc: "和指定對手各自選擇一張醫學牌互換", effectId: "copy", cat: "attack", count: 3, img: "images/act_copy.png" },
+            { type: "Action", name: "換科", desc: "所有玩家將功能牌洗回牌庫，重新抽取等量卡牌", effectId: "shift", cat: "global", count: 3, img: "images/act_shift.png" }, 
+            { type: "Action", name: "選科", desc: "每位玩家抽1張醫學牌，然後隨機棄置1張", effectId: "choose", cat: "global", count: 3, img: "images/act_choose.png" },
+            { type: "Action", name: "PM OFF", desc: "抵銷攻擊，雙方各抽一張醫學牌", effectId: "pmoff", cat: "defend", count: 3, img: "images/act_pmoff.png" },
+            { type: "Action", name: "交班", desc: "受到攻擊時，把攻擊直接轉移給下一家", effectId: "transfer", cat: "defend", count: 3, img: "images/act_transfer.png" }, 
+            { type: "Action", name: "整頓職場", desc: "受到攻擊時，把攻擊直接反彈予攻擊者", effectId: "reflect", cat: "defend", count: 3, img: "images/act_reflect.png" },
+
+            { type: "Action", name: "簽署 DNR", desc: "其中一個 Case，不用 Tx 即可完成", effectId: "dnr", cat: "buff", count: 2, img: "images/act_dnr.png" },
+            { type: "Action", name: "健保核刪", desc: "拔除對手已完成 Case 的治療牌丟棄", effectId: "audit", cat: "attack", count: 2, img: "images/act_audit.png" },
+            // 🌟 將大混亂改為 1 張
+            { type: "Action", name: "大混亂", desc: "所有人丟棄和你目前手牌等量的醫學牌後重抽", effectId: "chaos", cat: "global", count: 1, img: "images/act_chaos.png" },
+            { type: "Action", name: "我有BG", desc: "選擇對手，自己抽功能牌直到數量與他相同", effectId: "bg", cat: "buff", count: 2, img: "images/act_bg.png" },
+            { type: "Action", name: "核心課程", desc: "選擇一名對手，使其下一回合強制被跳過", effectId: "skip", cat: "attack", count: 2, img: "images/act_skip.png" },
+            { type: "Action", name: "今天沒事", desc: "馬上觸發全院事件，並重置事件倒數時間", effectId: "flag", cat: "global", count: 2, img: "images/act_flag.png" }
+        ];
+
+        const eventDB = [
+            { id: "chest", name: "🫁 胸腔內科", title: "【全院廣播：病房 Code Blue，緊急插管！】", color: "rgba(41, 128, 185, 0.6)",
+              scenario: "臨床情境：病人喘不過氣、血氧掉到 70%，全病房的醫師都推著急救車衝過去，根本沒空開常規藥物。",
+              global: "全場強制效果：【呼吸衰竭】。本回合內，所有玩家禁止打出任何「治療 (Tx)」牌。",
+              reward: "獲得特權，無視全場效果，且立刻從醫學棄牌區抽取 1 張「治療 (Tx)」或「診斷 (Dx)」加入手牌 (若無則抽牌庫)。",
+              penalty: "你必須強制丟棄手牌中的 1 張「治療 (Tx)」，若沒有則隨機盲丟 1 張醫學牌。",
+              qs: [
+                  {q:"一位長期抽菸的男性因咳嗽就醫，影像學發現肺部中央有腫瘤並伴隨空洞化。抽血檢查發現有高血鈣，請問最可能是下列哪一種肺癌？", opts:["A. 肺腺癌","B. 鱗狀上皮癌","C. 小細胞肺癌"], ans:1},
+                  {q:"針對晚期肺腺癌患者，若第一線使用 EGFR TKI 後產生抗藥性，且基因檢測發現 T790M 突變，應優先考慮改用哪一種標靶藥物？", opts:["A. Gefitinib","B. Crizotinib","C. Osimertinib"], ans:2},
+                  {q:"一位長期抽菸的65歲男性，因漸進性呼吸困難就醫。下列何項數值是診斷為 COPD 的黃金標準？", opts:["A. 支氣管擴張劑前 FEV1 < 80%","B. 支氣管擴張劑後 FEV1/FVC < 0.70","C. 支氣管擴張試驗 FEV1 增加 > 12%"], ans:1}
+              ]
+            },
+            { id: "cv", name: "🫀 心臟血管內科", title: "【全院廣播：急診 STEMI，立刻啟動心導管！】", color: "rgba(192, 57, 43, 0.6)",
+              scenario: "臨床情境：Time is muscle！心電圖一拉出來直接飛天，主治醫師在群組狂吼，全院節奏瞬間拉到最快。",
+              global: "全場強制效果：【心跳狂飆】。全場玩家強制進行「急速交班」，每個人必須立刻隨機盲丟 1 張醫學牌，然後重抽 1 張。",
+              reward: "精準抓到心電圖變化！你在急速交班中，再多抽 1 張醫學牌。",
+              penalty: "病人心律不整。在你的下個回合，強制跳過「下 Order」（不能打功能牌、不能收治）。",
+              qs: [
+                  {q:"55歲男性突發劇烈胸痛，心電圖導程 II, III, aVF 有 ST 段上升，懷疑下壁心肌梗塞。此病人最不適合使用下列哪一種藥物？", opts:["A. Aspirin","B. Nitrates","C. Clopidogrel"], ans:1},
+                  {q:"下列何種治療心臟衰竭的藥物，僅能改善症狀與降低住院率，但無法降低死亡率？", opts:["A. Spironolactone","B. Digoxin (毛地黃)","C. Dapagliflozin"], ans:1},
+                  {q:"HFrEF 病患開始使用 ARNI 治療。追蹤抽血數據時，下列何項指標會因為藥效而假性升高，不適合用來追蹤惡化？", opts:["A. BNP","B. NT-proBNP","C. Troponin I"], ans:0}
+              ]
+            },
+            { id: "nephro", name: "🩸 腎臟科", title: "【全院廣播：K 離子 7.8，緊急洗腎！】", color: "rgba(139, 0, 0, 0.6)",
+              scenario: "臨床情境：電解質徹底崩潰，病人隨時會 VT/VF，必須嚴格控制水分和飲食，所有人的資源都被限縮。",
+              global: "全場強制效果：【限水限鉀】。全場玩家的醫學牌「手牌上限」在下一回合強制縮減為 5 張。超過者立刻丟牌。",
+              reward: "你免疫手牌縮減效果（維持原上限），並可從功能牌堆免費抽 1 張牌。",
+              penalty: "你除了要遵守 5 張手牌限制，還必須立刻再盲丟棄 1 張手上的醫學牌。",
+              qs: [
+                  {q:"一位慢性腎臟病患者因嚴重高血鉀（K+ = 7.2 mEq/L）送急診，心電圖顯示 QRS 波變寬。此時最優先給予的急救藥物為何？", opts:["A. Insulin (RI) + Glucose (D50W)","B. Calcium gluconate (葡萄糖酸鈣)","C. Furosemide (Loop diuretics)"], ans:1},
+                  {q:"一位年輕患者因反覆肌肉無力就醫，抽血發現低血鉀、代謝性鹼中毒且血壓正常。檢驗顯示尿鈣顯著降低且合併低血鎂。最可能的診斷為何？", opts:["A. 原發性醛固酮過多症","B. Bartter's syndrome","C. Gitelman's syndrome"], ans:2},
+                  {q:"在各種腎小管酸血症 (RTA) 中，下列哪一型典型會合併「高血鉀 (Hyperkalemia)」？", opts:["A. 第一型遠端 RTA","B. 第二型近端 RTA","C. 第四型 RTA"], ans:2},
+                  {q:"針對高風險病患，在接受含碘顯影劑的電腦斷層檢查前，下列何者是預防顯影劑腎病變最首選且有效的方法？", opts:["A. 給予等張生理食鹽水靜脈輸液","B. 檢查前預防性安排血液透析","C. 單獨給予高劑量利尿劑"], ans:0},
+                  {q:"自體顯性多囊性腎病 (ADPKD) 患者除了腎臟囊泡外，也常合併其他器官的異常。下列何者是其最常見的腎外表現？", opts:["A. 顱內動脈瘤","B. 肝囊腫","C. 二尖瓣脫垂"], ans:1}
+              ]
+            },
+            { id: "id", name: "🦠 感染科", title: "【全院廣播：爆發院內抗藥性超級細菌 (CRAb)！】", color: "rgba(39, 174, 96, 0.6)",
+              scenario: "臨床情境：感控中心下達鐵腕政策，全病房嚴格隔離穿兔寶寶裝，各科之間的交流與病人轉床全面停擺。",
+              global: "全場強制效果：【嚴格隔離】。全場玩家在下次回合前，都無法使用「會診單」或「功能牌」。",
+              reward: "你無視隔離規定，下一回合仍然可以自由使用會診單與功能牌。",
+              penalty: "你必須強制將手上的 1 張「會診單」或「功能牌」丟入棄牌區，沒有則盲丟一張醫學牌。",
+              qs: [
+                  {q:"一位有靜脈藥癮 (IVDU) 病史的患者因發燒求診，血液培養長出金黃色葡萄球菌。其感染性心內膜炎最常侵犯哪一個心臟瓣膜？", opts:["A. 主動脈瓣","B. 二尖瓣","C. 三尖瓣"], ans:2},
+                  {q:"一位 60 歲健康男性突發發燒、頭痛及頸部僵硬送急診，腰椎穿刺顯示細菌性腦膜炎。在等待培養結果前，最適合的經驗性抗生素組合為何？", opts:["A. Ceftriaxone + Vancomycin + Ampicillin","B. Ceftriaxone + Vancomycin","C. Cefepime + Metronidazole"], ans:0},
+                  {q:"結核病患者接受第一線抗結核藥物 (RIPE) 治療後，主訴尿液及眼淚變成橘紅色。此現象最可能是下列哪一種藥物引起？", opts:["A. Isoniazid (INH)","B. Rifampin (RMP)","C. Pyrazinamide (PZA)"], ans:1},
+                  {q:"一位從印度返國的旅客出現持續高燒、相對性心跳過慢及腹部玫瑰疹，血液培養長出沙門氏桿菌 (Salmonella Typhi)。此疾病最常潛伏於哪一個器官？", opts:["A. 肝臟","B. 膽囊","C. 脾臟"], ans:1},
+                  {q:"針對中心靜脈導管相關血流感染 (CRBSI)，若血液培養結果為下列何種細菌，強烈建議必須移除導管？", opts:["A. 表皮葡萄球菌","B. 凝固酶陰性葡萄球菌 (CoNS)","C. 金黃色葡萄球菌"], ans:2}
+              ]
+            },
+            { id: "rheuma", name: "🦋 風濕免疫科", title: "【全院廣播：自體免疫風暴，症狀大亂鬥！】", color: "rgba(142, 68, 173, 0.6)",
+              scenario: "臨床情境：免疫系統敵我不分，開始攻擊自己的器官，各種非典型症狀同時出現，連主治醫師都眉頭一皺。",
+              global: "全場強制效果：【診斷迷霧】。系統強制發動大風吹，所有玩家將手中的 1 張隨機醫學牌，傳給下一家（右邊玩家）。",
+              reward: "你用類固醇脈衝療法壓下風暴！你可以把給下一家的牌拿回來，並額外多抽 1 張牌。",
+              penalty: "你被各種假陽性檢驗數據騙了。你必須額外多傳 1 張醫學牌給下一家。",
+              qs: [
+                  {q:"針對全身性紅斑性狼瘡 (SLE) 的自體抗體檢查，下列哪一種抗體的「特異性」最高，且其效價常與腎臟疾病的活動度呈正相關？", opts:["A. ANA","B. Anti-Ro (SSA)","C. Anti-dsDNA"], ans:2},
+                  {q:"類風濕性關節炎 (RA) 患者的血清學檢查中，下列哪一種抗體對於早期診斷 RA 具有最高的特異性？", opts:["A. 類風濕因子 (RF)","B. Anti-CCP antibody","C. 抗核抗體 (ANA)"], ans:1},
+                  {q:"一位病患因急性單側第一趾莖趾關節紅腫熱痛就醫。抽取關節液在偏光顯微鏡下觀察，最典型會呈現下列何種特徵？", opts:["A. 負向雙折光的針狀結晶","B. 正向雙折光的菱形結晶","C. 無雙折光性的方形結晶"], ans:0},
+                  {q:"針對類風濕性關節炎 (RA) 的藥物治療，下列何者被公認為是第一線且最核心的傳統合成疾病調節抗風濕藥物 (csDMARD)？", opts:["A. Methotrexate (MTX)","B. Sulfasalazine (SULF)","C. Hydroxychloroquine (HCQ)"], ans:0},
+                  {q:"在鑑別診斷多發性關節炎時，「遠端指間關節 (DIP)」的侵犯與否是一個重要的線索。下列哪一種關節炎極少侵犯遠端指間關節？", opts:["A. 類風濕性關節炎 (RA)","B. 退化性關節炎 (OA)","C. 乾癬性關節炎 (PsA)"], ans:0}
+              ]
+            },
+            { id: "hemato", name: "🩸 血液腫瘤科", title: "【全院廣播：化療後 Neutropenia 合併發燒！】", color: "rgba(44, 62, 80, 0.6)",
+              scenario: "臨床情境：病人白血球掉到趨近於零，完全沒有抵抗力，任何一點風吹草動都會要命，所有防禦機制失效。",
+              global: "全場強制效果：【免疫低下】。本回合內，全場玩家的「功能牌」遭到封印，無法使用。",
+              reward: "你及時施打白血球生長激素！你的功能牌可照常生效，並可立刻抽 1 張醫學牌。",
+              penalty: "病人引發嚴重黴菌感染。你的手牌必須強制公開 (亮牌) 直到下回合結束。",
+              qs: [
+                  {q:"一位患者因嚴重牙齦出血與紫斑就醫，骨髓檢查發現大量前骨髓細胞且含有 Auer rods，高度懷疑為急性前骨髓細胞白血病 (APL)。首要急救處置為何？", opts:["A. 立即給予 ATRA (全反式維甲酸)","B. 等待基因報告確診 t(15;17) 後再化療","C. 立即進行骨髓移植"], ans:0},
+                  {q:"在淋巴結切片病理檢查中，若發現背景充滿發炎細胞，且有典型的「貓頭鷹眼細胞 (Reed-Sternberg cells)」，最可能的診斷為何？", opts:["A. 何杰金氏淋巴瘤","B. 瀰漫性大 B 細胞淋巴瘤","C. 濾泡性淋巴瘤"], ans:0},
+                  {q:"針對晚期轉移性大腸直腸癌患者，在考慮使用抗 EGFR 單株抗體 (如 Cetuximab) 作為標靶治療前，必須先確認哪一個基因的狀態為野生型才有效？", opts:["A. HER2","B. BRAF","C. KRAS"], ans:2},
+                  {q:"瀰漫性血管內凝血 (DIC) 是一種嚴重的出血與血栓併發急症，下列哪一組實驗室數據變化最符合 DIC 的特徵？", opts:["A. PT/aPTT 延長、血小板低下、D-dimer 升高、Fibrinogen 低下","B. PT/aPTT 正常、血小板低下、D-dimer 正常、Fibrinogen 升高","C. PT/aPTT 延長、血小板正常、D-dimer 升高、Fibrinogen 正常"], ans:0},
+                  {q:"一位癌症患者接受化療後出現發燒，ANC < 500。在給予第一線經驗性抗生素治療時，藥物頻譜「必須」能涵蓋下列哪一種致命性細菌？", opts:["A. 綠膿桿菌 (Pseudomonas aeruginosa)","B. 困難梭狀桿菌","C. 結核分枝桿菌"], ans:0}
+              ]
+            },
+            { id: "gi", name: "🟨 肝膽腸胃科", title: "【全院廣播：半夜連環 Massive GI Bleeding！】", color: "rgba(243, 156, 18, 0.6)",
+              scenario: "臨床情境：食道靜脈曲張大出血，血庫存血被抽乾，急診狂 Call 胃鏡室，全院資源陷入極度短缺。",
+              global: "全場強制效果：【血庫見底】。所有玩家必須立刻從手上犧牲（盲丟棄）1 張「主訴 (CC)」或「症狀 (Sx)」牌來捐血 (無則盲丟任意牌)。",
+              reward: "你一針打準了 Terlipressin 並成功套環！你不需丟牌，還可以從醫學棄牌堆頂端免費撿 1 張回手牌。",
+              penalty: "你找不到出血點。你除了要犧牲捐血，還必須再盲丟一張醫學牌。",
+              qs: [
+                  {q:"肝硬化合併腹水病患，血清-腹水白蛋白梯度 (SAAG) 為 1.5 g/dL，且腹水總蛋白 (AFTP) 為 1.8 g/dL。最可能的腹水原因為何？", opts:["A. 結核性腹膜炎","B. 門脈高壓引起的肝硬化腹水","C. 右心衰竭"], ans:1},
+                  {q:"關於慢性 C 型肝炎的最新治療指引，下列敘述何者最正確？", opts:["A. 治療首選仍為干擾素合併雷巴威林","B. 治療成功的目標為達到 SVR，即停藥 12 週後測不到病毒","C. 篩檢出 Anti-HCV 陽性即代表正在感染，不需測 RNA 直接給藥"], ans:1},
+                  {q:"一位急性胰臟炎病患準備進行初步輸液復甦。根據最新治療觀念，下列敘述何者最正確？", opts:["A. 建議常規給予廣效抗生素預防感染","B. 輸液選擇上，乳酸林格氏液 (LR) 優於生理食鹽水 (NS)","C. 絕對禁止早期由口或腸道進食，必須全靜脈營養 (TPN)"], ans:1},
+                  {q:"一位 65 歲男性因發燒、右上腹痛及黃疸送急診，血壓 85/50，且出現意識混亂。此病患最符合何種診斷及其首選處置？", opts:["A. 急性膽囊炎，緊急腹腔鏡膽囊切除術","B. 化膿性急性膽管炎，緊急內視鏡逆行性膽胰管攝影 (ERCP) 引流","C. 膽石性腸阻塞，緊急開腹取出結石"], ans:1},
+                  {q:"一位 75 歲無過去病史的男性，突發大量無痛性鮮血便送急診。在老年人中，這種無痛性下消化道大出血最常見原因為何？", opts:["A. 痔瘡出血","B. 大腸直腸癌出血","C. 大腸憩室出血"], ans:2}
+              ]
+            },
+            { id: "meta", name: "🍬 新陳代謝科", title: "【全院廣播：深夜 DKA 與低血糖昏迷交替！】", color: "rgba(255, 105, 180, 0.6)",
+              scenario: "臨床情境：血糖機狂叫，大腦因為能量供應不穩而無法思考，大家的底牌盡露。",
+              global: "全場強制效果：【大腦能量耗竭】。全場玩家強制進入「明牌模式」，所有人的醫學手牌必須攤開向所有人展示，持續一回合。",
+              reward: "你及時推了兩支高濃度葡萄糖！你的大腦異常清晰，手牌回復覆蓋，且可以隨機抽走一名對手的 1 張醫學牌。",
+              penalty: "血糖控制徹底失敗。你的手牌維持攤開，且下個回合你被強制「跳過抽牌階段」。",
+              qs: [
+                  {q:"一位第二型糖尿病合併心臟衰竭 (HFrEF) 的病患，下列哪一種降血糖藥物為現行指引建議之首選？", opts:["A. Metformin (雙胍類)","B. Empagliflozin (SGLT-2 抑制劑)","C. Pioglitazone (TZD 類)"], ans:1},
+                  {q:"一位第一型糖尿病患者因嚴重 DKA 送急診，抽血鉀離子濃度為 2.8 mEq/L。關於其第一步急救處置，下列何者最正確？", opts:["A. 立即靜脈輸注短效胰島素","B. 立即給予碳酸氫鹽矯正酸血症","C. 絕對不可先打胰島素，必須先給予輸液並補充鉀離子"], ans:2},
+                  {q:"年輕女性剛診斷葛瑞夫茲氏病並服用 Methimazole。兩週後突發高燒與嚴重喉嚨痛，必須立即停藥並最優先檢查下列何項數值？", opts:["A. AST/ALT","B. 白血球計數 (WBC)","C. Free T4"], ans:1},
+                  {q:"門診遇到疑似庫欣氏症候群 (Cushing's Syndrome) 的病患時，最常首選的初步篩檢工具為何？", opts:["A. 抽血檢驗早晨 ACTH","B. 過夜 1mg 濾過性毒素抑制試驗 (Overnight 1mg DST)","C. 高劑量濾過性毒素抑制試驗"], ans:1},
+                  {q:"一位高血脂病患同時服用 Statin 類與 Fibrate 類藥物。此藥物組合最容易大幅增加下列哪一種嚴重副作用的風險？", opts:["A. 猛爆性肝炎","B. 急性胰臟炎","C. 橫紋肌溶解症 (Rhabdomyolysis)"], ans:2}
+              ]
+            }
+        ];
+
+        let globalEffects = { noTx: 0, noAction: 0, revealHands: 0, handLimit: 0 };
+        let playerImmune = { noTx: false, skipOrder: false, noAction: false, revealHands: false, handLimit: false, skipDraw: false };
+
+        let players = [
+            { id: 0, name: "你", isHuman: true, hand: [], actionHand: [], table: [], maxLimit: 7, hasDNR: false, isRevealed: false, skipTurn: false },
+            { id: 1, name: "永強", isHuman: false, hand: [], actionHand: [], table: [], maxLimit: 7, hasDNR: false, isRevealed: false, skipOrder: false, skipDraw: false, skipTurn: false },
+            { id: 2, name: "劉英", isHuman: false, hand: [], actionHand: [], table: [], maxLimit: 7, hasDNR: false, isRevealed: false, skipOrder: false, skipDraw: false, skipTurn: false },
+            // 🌟 將鐵柱改為常貴
+            { id: 3, name: "常貴", isHuman: false, hand: [], actionHand: [], table: [], maxLimit: 7, hasDNR: false, isRevealed: false, skipOrder: false, skipDraw: false, skipTurn: false }
+        ];
+
+        let currentPlayerIndex = 0;
+        let medicalDeck = [], actionDeck = [];
+        let discardPile = [], actionDiscardPile = []; 
+        let hasDrawnThisTurn = false;
+        let hasPlayedActionThisTurn = false; 
+        let isAnimating = false; 
+        let pendingActionIdx = -1; 
+        let draggedCardIndex = null;
+
+        let firstPlayerIndex = 0;
+        let completedRounds = 0;
+        let nextEventRound = 2; 
+
+        // 🌟 新增：事件倒數計時相關變數
+        let quizTimer;
+        let quizTimeLeft = 30;
+
+        function buildDecks() {
+            medicalDeck = []; actionDeck = [];
+            medicalDeckBlueprint.forEach(c => { 
+                let count = c.count || 5; 
+                for(let i=0; i<count; i++) medicalDeck.push(Object.assign({}, c)); 
+            });
+            
+            actionDeckBlueprint.forEach(c => { 
+                let count = c.count || 3; 
+                for(let i=0; i<count; i++) actionDeck.push(Object.assign({}, c)); 
+            });
+            
+            medicalDeck.sort(() => Math.random() - 0.5); 
+            actionDeck.sort(() => Math.random() - 0.5);
+        }
+
+        function drawFromDeck(type) {
+            let deck = type === 'medical' ? medicalDeck : actionDeck;
+            let discard = type === 'medical' ? discardPile : actionDiscardPile;
+            if (deck.length === 0) {
+                if (discard.length === 0) return null;
+                showToast(type === 'medical' ? "🔄 醫學牌庫已空！病歷室大歸檔！" : "🔄 功能牌庫已空！值班機大交班！");
+                while(discard.length > 0) deck.push(discard.pop());
+                deck.sort(() => Math.random() - 0.5);
+            }
+            let card = deck.pop();
+            if(card) card.isNew = true; 
+            return card;
+        }
+
+        function addToDiscard(card, discarderName) {
+            if(!card) return;
+            card.discarder = discarderName || "系統";
+            card.roundDiscarded = completedRounds; 
+            card.isSelected = false;
+            discardPile.push(card);
+        }
+
+        async function startGame() {
+            document.getElementById("start-screen").style.display = "none";
+            document.getElementById("game-wrapper").style.display = "flex"; 
+            
+            buildDecks();
+            
+            for (let p of players) {
+                for(let i=0; i<7; i++) p.hand.push(Object.assign({isSelected: false}, drawFromDeck('medical')));
+                for(let i=0; i<3; i++) p.actionHand.push(drawFromDeck('action'));
+                
+                let hasCC = p.hand.some(c => c.type === "CC" || c.type === "Wildcard");
+                if (!hasCC) {
+                    while(p.hand.length > 0) medicalDeck.push(p.hand.pop());
+                    medicalDeck.sort(() => Math.random() - 0.5);
+                    for(let i=0; i<7; i++) p.hand.push(Object.assign({isSelected: false}, drawFromDeck('medical')));
+                }
+            }
+
+            currentPlayerIndex = Math.floor(Math.random() * 4);
+            firstPlayerIndex = currentPlayerIndex;
+            completedRounds = 0;
+            nextEventRound = 2;
+
+            // 🌟 新增：2秒起始宣告動畫
+            let overlay = document.getElementById("start-turn-overlay");
+            let msgEl = document.getElementById("start-turn-msg");
+            msgEl.innerHTML = `遊戲開始！<br><span style="color:white; font-size:40px;">第一回合由【${players[currentPlayerIndex].name}】先手</span>`;
+            overlay.style.display = "flex";
+            await sleep(2000);
+            overlay.style.display = "none";
+
+            startTurn();
+        }
+
+        // 🌟 新增：倒數計時與強制作答失敗機制
+        function startQuizTimer(eventId, penaltyText) {
+            quizTimeLeft = 30;
+            let bar = document.getElementById("quiz-timer-bar");
+            bar.style.width = "100%";
+            
+            clearInterval(quizTimer);
+            quizTimer = setInterval(() => {
+                quizTimeLeft--;
+                bar.style.width = (quizTimeLeft / 30 * 100) + "%";
+                
+                if (quizTimeLeft <= 0) {
+                    clearInterval(quizTimer);
+                    // 超時視為選錯 (傳入一個不可能正確的索引 -1)
+                    submitQuizAnswer(eventId, -1, 0, "", penaltyText);
+                }
+            }, 1000);
+        }
+
+        async function triggerRandomEvent() {
+            return new Promise(async resolve => {
+                isAnimating = true;
+                let ev = eventDB[Math.floor(Math.random() * eventDB.length)];
+                
+                let overlay = document.getElementById("flash-overlay");
+                overlay.style.setProperty('--flash-color', ev.color);
+                overlay.classList.add("flashing");
+                showToast(ev.title);
+                await sleep(1500);
+                overlay.classList.remove("flashing");
+
+                players.forEach(p => {
+                    if (!p.isHuman) {
+                        p.passedEvent = (Math.random() <= 0.60);
+                    }
+                });
+                
+                let qData = ev.qs[Math.floor(Math.random() * ev.qs.length)];
+                document.getElementById("quiz-dept-title").innerText = `${ev.name} ${ev.title}`;
+                document.getElementById("quiz-scenario").innerText = ev.scenario;
+                document.getElementById("quiz-global").innerText = ev.global;
+                document.getElementById("quiz-question-text").innerText = qData.q;
+                
+                let optsContainer = document.getElementById("quiz-options-container");
+                optsContainer.innerHTML = qData.opts.map((opt, i) => 
+                    `<button class="quiz-option" onclick="submitQuizAnswer('${ev.id}', ${i}, ${qData.ans}, '${ev.reward}', '${ev.penalty}')">${opt}</button>`
+                ).join("");
+
+                window.currentEventResolve = resolve;
+                document.getElementById("quiz-modal").style.display = "block";
+                
+                // 啟動 30 秒倒數
+                startQuizTimer(ev.id, ev.penalty);
+            });
+        }
+
+        async function submitQuizAnswer(eventId, selected, correctAns, rewardText, penaltyText) {
+            clearInterval(quizTimer); // 停止計時器
+            document.getElementById("quiz-modal").style.display = "none";
+            
+            let isCorrect = (selected === correctAns);
+            players[0].passedEvent = isCorrect;
+
+            if (isCorrect) {
+                await playCinematicAsync({name:"🎯 答對了！", desc:""}, "國考大師", rewardText);
+            } else {
+                if (selected === -1) await playCinematicAsync({name:"⏳ 超時未答！", desc:""}, "猶豫不決", penaltyText);
+                else await playCinematicAsync({name:"💀 答錯了！", desc:""}, "醫療疏失", penaltyText);
+            }
+
+            Object.keys(playerImmune).forEach(k => playerImmune[k] = false);
+            players.forEach(p => { if(!p.isHuman) { p.immuneNoTx = false; p.immuneNoAction = false; p.immuneRevealHands = false; p.immuneHandLimit = false; }});
+
+            let nextRnd = completedRounds + 1;
+            if (eventId === "chest") globalEffects.noTx = nextRnd;
+            if (eventId === "id" || eventId === "hemato") globalEffects.noAction = nextRnd;
+            if (eventId === "meta") globalEffects.revealHands = nextRnd;
+            if (eventId === "nephro") globalEffects.handLimit = nextRnd;
+
+            for (let i = 0; i < players.length; i++) {
+                let p = players[i];
+                let passed = p.passedEvent;
+
+                if (i !== 0) {
+                    if (passed) showToast(`🤖 ${p.name} 順利解決了危機！(答對)`);
+                    else showToast(`⚠️ ${p.name} 發生醫療疏失！(答錯)`);
+                }
+
+                switch (eventId) {
+                    case "chest":
+                        if (passed) {
+                            if(i===0) playerImmune.noTx = true; else p.immuneNoTx = true;
+                            let validIdx = discardPile.findLastIndex(c => c.type==="Tx" || c.type==="Dx");
+                            if (validIdx !== -1) p.hand.push(discardPile.splice(validIdx, 1)[0]);
+                            else { let n = drawFromDeck('medical'); if(n) p.hand.push(n); }
+                        } else {
+                            let tIdx = p.hand.findIndex(c => c.type==="Tx");
+                            if (tIdx !== -1) addToDiscard(p.hand.splice(tIdx, 1)[0], p.name);
+                            else if (p.hand.length > 0) addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                        }
+                        break;
+                    case "cv":
+                        if (p.hand.length > 0) addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                        let c1 = drawFromDeck('medical'); if(c1) p.hand.push(Object.assign({isSelected:false, isNew:true}, c1));
+
+                        if (passed) {
+                            let n = drawFromDeck('medical'); if(n) p.hand.push(n);
+                        } else {
+                            if(i===0) playerImmune.skipOrder = true; else p.skipOrder = true;
+                        }
+                        break;
+                    case "nephro":
+                        if (passed) {
+                            if(i===0) playerImmune.handLimit = true; else p.immuneHandLimit = true;
+                            let act = drawFromDeck('action'); if(act) p.actionHand.push(act);
+                        } else {
+                            if (p.hand.length > 0) addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                        }
+                        let limit = ((i===0 && playerImmune.handLimit) || (i!==0 && p.immuneHandLimit)) ? p.maxLimit : 5;
+                        while (p.hand.length > limit) {
+                            addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                        }
+                        break;
+                    case "id":
+                        if (passed) {
+                            if(i===0) playerImmune.noAction = true; else p.immuneNoAction = true;
+                        } else {
+                            if (p.actionHand.length > 0) actionDiscardPile.push(p.actionHand.splice(Math.floor(Math.random()*p.actionHand.length), 1)[0]);
+                            else if (p.hand.length > 0) addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                        }
+                        break;
+                    case "hemato":
+                        if (passed) {
+                            if(i===0) playerImmune.noAction = true; else p.immuneNoAction = true;
+                            let n = drawFromDeck('medical'); if(n) p.hand.push(n); 
+                        } else {
+                            p.isRevealed = true;
+                        }
+                        break;
+                    case "gi":
+                        if (passed) {
+                            let top = discardPile.pop(); if(top) p.hand.push(top);
+                        } else {
+                            let ccIdx = p.hand.findIndex(c => c.type === "CC" || c.type === "Sx");
+                            if (ccIdx !== -1) addToDiscard(p.hand.splice(ccIdx, 1)[0], p.name);
+                            else if(p.hand.length>0) addToDiscard(p.hand.splice(0, 1)[0], p.name);
+                            
+                            if(p.hand.length>0) addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                        }
+                        break;
+                    case "meta":
+                        if (passed) {
+                            if(i===0) playerImmune.revealHands = true; else p.immuneRevealHands = true;
+                            p.isRevealed = false;
+                            let targets = players.filter(t => t.id !== p.id && t.hand.length > 0);
+                            if (targets.length > 0) {
+                                let target = targets[Math.floor(Math.random() * targets.length)];
+                                p.hand.push(target.hand.splice(Math.floor(Math.random()*target.hand.length), 1)[0]);
+                            }
+                        } else {
+                            if(i===0) playerImmune.skipDraw = true; else p.skipDraw = true;
+                        }
+                        break;
+                }
+            }
+
+            if (eventId === "rheuma") {
+                let passArr = [];
+                players.forEach(p => {
+                    let passCount = p.passedEvent ? 1 : 2;
+                    let gave = [];
+                    for(let k=0; k<passCount; k++) {
+                        if(p.hand.length > 0) gave.push(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0]);
+                    }
+                    passArr.push(gave);
+                });
+                for(let i=0; i<players.length; i++){
+                    let leftIdx = (i + 3) % 4; 
+                    passArr[leftIdx].forEach(c => players[i].hand.push(c));
+                    if(players[i].passedEvent) {
+                        let n = drawFromDeck('medical'); if(n) players[i].hand.push(n);
+                    }
+                }
+            }
+
+            renderAll();
+            isAnimating = false;
+            if (window.currentEventResolve) window.currentEventResolve();
+        }
+
+        async function startTurn() {
+            hasDrawnThisTurn = false;
+            hasPlayedActionThisTurn = false; 
+            
+            let curP = players[currentPlayerIndex];
+            if (curP.skipTurn) {
+                curP.skipTurn = false;
+                showToast(`🚫 受到核心課程影響，【${curP.name}】的回合被強制跳過了！`);
+                document.getElementById("turn-announcement").innerHTML = `🔄 第 ${completedRounds + 1} 輪 | 🚫 【${curP.name}】被跳過！`;
+                renderAll();
+                await sleep(1500);
+                await passToNextPlayer();
+                return;
+            }
+
+            if (globalEffects.noTx <= completedRounds) globalEffects.noTx = 0;
+            if (globalEffects.noAction <= completedRounds) globalEffects.noAction = 0;
+            if (globalEffects.revealHands <= completedRounds) globalEffects.revealHands = 0;
+            if (globalEffects.handLimit <= completedRounds) globalEffects.handLimit = 0;
+
+            if (completedRounds > 0 && completedRounds >= nextEventRound && currentPlayerIndex === firstPlayerIndex) {
+                if (!window.eventTriggeredThisRound) {
+                    window.eventTriggeredThisRound = true;
+                    nextEventRound = completedRounds + (Math.floor(Math.random() * 2) + 3); 
+                    await triggerRandomEvent();
+                }
+            }
+            if (currentPlayerIndex === firstPlayerIndex && completedRounds !== nextEventRound) {
+                window.eventTriggeredThisRound = false;
+            }
+
+            if (globalEffects.revealHands > 0) {
+                players.forEach((p, i) => {
+                    let immune = (i === 0) ? playerImmune.revealHands : p.immuneRevealHands;
+                    if (!immune) p.isRevealed = true;
+                });
+            } else {
+                players.forEach(p => p.isRevealed = false);
+            }
+
+            let roundsToNext = nextEventRound - completedRounds;
+            if(roundsToNext < 0) roundsToNext = 0;
+            document.getElementById("event-countdown").innerText = roundsToNext;
+            if (roundsToNext === 1) document.getElementById("event-timer-box").style.borderColor = "#e74c3c";
+            else document.getElementById("event-timer-box").style.borderColor = "#f1c40f";
+            
+            document.getElementById("turn-announcement").innerHTML = `🔄 第 ${completedRounds + 1} 輪 | 📢 現在是【${curP.name}】的回合`;
+            
+            let drawBtn = document.getElementById("draw-btn");
+            if (curP.isHuman) {
+                drawBtn.classList.remove("disabled"); drawBtn.classList.add("player-turn-highlight");
+            } else {
+                drawBtn.classList.add("disabled"); drawBtn.classList.remove("player-turn-highlight");
+            }
+            renderAll();
+
+            if (!curP.isHuman) setTimeout(() => botTurn(curP), 1500);
+        }
+
+        async function passToNextPlayer() {
+            if (checkWin()) return;
+            currentPlayerIndex = (currentPlayerIndex + 1) % 4;
+
+            if (currentPlayerIndex === firstPlayerIndex) {
+                completedRounds++;
+                if (completedRounds > 0 && completedRounds % 3 === 0) {
+                    let dummyCard = { name: "物資空投", desc: "每3輪定期配給，全員獲得 1 張功能牌！", type: "Action", img: "" };
+                    await playCinematicAsync(dummyCard, "🏥 醫院廣播系統", "全員配發補給！");
+
+                    players.forEach(p => {
+                        if (p.actionHand.length < 3) {
+                            let act = drawFromDeck('action');
+                            if (act) { act.isNew = true; p.actionHand.push(act); }
+                        }
+                    });
+                    renderAll();
+                    await sleep(1000);
+                }
+            }
+            startTurn();
+        }
+
+        async function endTurn() {
+            if (isAnimating) return;
+            if (currentPlayerIndex !== 0) return showToast("⚠️ 現在不是你的回合！");
+            if (!hasDrawnThisTurn) return showToast("⚠️ 還沒查房！請先抽醫學牌。");
+            
+            let pLimit = (globalEffects.handLimit > 0 && !playerImmune.handLimit) ? 5 : players[0].maxLimit;
+            if (players[0].hand.length > pLimit) return showToast(`⚠️ 手牌超過上限(${pLimit}張)！請先丟棄多餘手牌。`);
+            
+            playerImmune.skipOrder = false;
+            playerImmune.skipDraw = false;
+
+            showToast("➡️ 你的回合結束！");
+            await passToNextPlayer();
+        }
+
+        function dragStart(e, index) { draggedCardIndex = index; e.target.classList.add("dragging"); }
+        function dragOver(e) { e.preventDefault(); }
+        function drop(e, dropIndex) {
+            e.preventDefault();
+            let draggedEl = document.querySelector(".dragging");
+            if(draggedEl) draggedEl.classList.remove("dragging");
+            if (draggedCardIndex === null || draggedCardIndex === dropIndex) return;
+            let pHand = players[0].hand;
+            let card = pHand.splice(draggedCardIndex, 1)[0];
+            pHand.splice(dropIndex, 0, card);
+            renderAll();
+        }
+
+        function showRevealedHand(botId) {
+            let bot = players[botId];
+            if(!bot.isRevealed) return;
+            document.getElementById("reveal-target-name").innerText = bot.name;
+            let container = document.getElementById("reveal-hand-container");
+            
+            container.innerHTML = bot.hand.map(c => {
+                let imgHtml = generateImgHtml(c);
+                return `
+                <div class="card type-${c.type}" style="width: 140px; min-height: 180px; padding: 15px; cursor: default; transform: none; box-shadow: 2px 2px 10px rgba(0,0,0,0.3); margin: 5px;">
+                    ${imgHtml}
+                    <div class="card-title" style="font-size:18px; margin-bottom: 8px;">${c.name}</div>
+                    <div class="card-type-badge" style="font-size:14px; padding: 4px 8px;">${typeMap[c.type]}</div>
+                </div>
+            `}).join("");
+            
+            document.getElementById("reveal-modal").style.display = "block";
+        }
+
+        function showDiscardModal() {
+            let list = document.getElementById("discard-list");
+            list.innerHTML = discardPile.length === 0 ? "<p style='text-align:center;'>目前空空的</p>" : discardPile.map(c => `
+                <div style="margin-bottom:8px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+                    <div><span class="bot-case-card type-${c.type}">${typeMap[c.type]}</span> <strong>${c.name}</strong></div>
+                    <div style="font-size:12px; color:#7f8c8d;">${c.discarder} 丟棄 (第${c.roundDiscarded}輪)</div>
+                </div>`).reverse().join("");
+            document.getElementById("discard-modal").style.display = "block";
+        }
+        function closeModal(id) { document.getElementById(id).style.display = "none"; }
+        function toggleCardSelection(index) { 
+            if(isAnimating || currentPlayerIndex !== 0) return; 
+            players[0].hand[index].isSelected = !players[0].hand[index].isSelected; 
+            renderAll(); 
+        }
+        function showGuideModal() { document.getElementById("guide-modal").style.display = "block"; }
+
+        function checkWin() {
+            for (let p of players) {
+                if (p.table.length >= 2) {
+                    document.getElementById("victory-title").innerText = p.isHuman ? "🎉 恭喜勝利！" : "😭 遊戲結束！";
+                    document.getElementById("victory-desc").innerText = `${p.name} 率先湊滿 2 床病人，洗手下班了！`;
+                    document.getElementById("game-over-screen").style.display = "flex";
+                    // 🌟 如果是玩家獲勝，顯示國考趨勢分析按鈕
+                    if (p.isHuman) {
+                        document.getElementById("study-link").style.display = "inline-block";
+                    } else {
+                        document.getElementById("study-link").style.display = "none";
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function validateCase(selectedCards, isDNRActive, isPlayer=false) {
+            let wildcards = selectedCards.filter(c => c.type === "Wildcard").length;
+            let normals = selectedCards.filter(c => c.type !== "Wildcard");
+            
+            if (selectedCards.length !== 3 && selectedCards.length !== 4) {
+                if (isDNRActive) return { valid: false, msg: "退件！請選取 4 張牌（含治療）或 3 張牌（DNR免治）！" };
+                return { valid: false, msg: "退件！必須剛好選取 4 張牌（主訴+症狀+診斷+治療）！" };
+            }
+
+            let isUsingDNR = (selectedCards.length === 3);
+
+            if (isUsingDNR) {
+                if (!isDNRActive) return { valid: false, msg: "退件！目前無【DNR】狀態，必須選取 4 張牌！" };
+                if (wildcards > 0) return { valid: false, msg: "退件！使用【DNR】免治療收治時，不可使用【會診單】！" };
+            } else {
+                if (wildcards > 1) return { valid: false, msg: "退件！一床病人最多只能使用 1 張【會診單】！" };
+                
+                if (globalEffects.noTx > 0 && (!isPlayer || !playerImmune.noTx)) {
+                    let hasTx = selectedCards.some(c => c.type === "Tx");
+                    if (hasTx) return { valid: false, msg: "退件！全院呼吸衰竭搶救中，禁止打出任何治療牌(Tx)！" };
+                }
+            }
+
+            for (let recipe of validRecipes) {
+                let reqTypes = ["cc", "sx", "dx"]; 
+                if (!isUsingDNR) reqTypes.push("tx");
+
+                let tWilds = wildcards, tRem = [...normals], isMatch = true;
+                for (let req of reqTypes) {
+                    let validOpts = recipe[req];
+                    let fIdx = tRem.findIndex(c => validOpts.includes(c.name));
+                    if (fIdx !== -1) tRem.splice(fIdx, 1);
+                    else if (tWilds > 0) tWilds--;
+                    else { isMatch = false; break; }
+                }
+                if (isMatch && tRem.length === 0) return { valid: true, recipeName: recipe.name, usedDNR: isUsingDNR };
+            }
+            return { valid: false, msg: "卡牌組合不符合任何臨床指引！" };
+        }
+
+        function drawMedicalCard() {
+            if (isAnimating || currentPlayerIndex !== 0) return;
+            if (hasDrawnThisTurn) return showToast("⚠️ 您這回合已經抽過牌囉！");
+            
+            if (playerImmune.skipDraw) {
+                showToast("❌ 受低血糖昏迷影響，你本回合無法抽牌！");
+                hasDrawnThisTurn = true; 
+                renderAll();
+                return;
+            }
+
+            let newCard = drawFromDeck('medical');
+            if(newCard) {
+                players[0].hand.push(Object.assign({isSelected: false}, newCard));
+                hasDrawnThisTurn = true; 
+                renderAll();
+            }
+        }
+
+        function admitPatient() {
+            if (isAnimating || currentPlayerIndex !== 0) return;
+            if (playerImmune.skipOrder) return showToast("❌ 受負面狀態影響，你本回合無法收治！");
+
+            let p = players[0];
+            let selectedIdxs = [];
+            p.hand.forEach((c, i) => { if(c.isSelected) selectedIdxs.push(i); });
+            
+            let selected = selectedIdxs.map(i => p.hand[i]);
+            let valResult = validateCase(selected, p.hasDNR, true);
+
+            if (valResult.valid) {
+                isAnimating = true;
+                selectedIdxs.forEach(idx => {
+                    let el = document.getElementById(`my-card-${idx}`);
+                    if(el) el.classList.add("animate-admit");
+                });
+
+                setTimeout(() => {
+                    showToast(`🎊 收治成功！診斷為：【${valResult.recipeName}】`);
+                    selected.forEach(c => c.recipeName = valResult.recipeName); 
+                    p.table.push(selected);
+                    p.hand = p.hand.filter(c => !c.isSelected);
+                    
+                    if (valResult.usedDNR) p.hasDNR = false; 
+                    
+                    if (p.actionHand.length < 3) {
+                        let newAct = drawFromDeck('action');
+                        if(newAct) { p.actionHand.push(newAct); showToast("🎁 成功收治！獲得 1 張功能牌獎勵！"); }
+                    } else showToast("⚠️ 你的功能牌已達 3 張上限，無法領取獎勵！");
+                    
+                    isAnimating = false;
+                    renderAll();
+                    checkWin(); 
+                }, 400); 
+            } else { showToast("❌ " + valResult.msg); }
+        }
+
+        function discardCard() {
+            if (isAnimating || currentPlayerIndex !== 0) return;
+            let p = players[0];
+            let pLimit = (globalEffects.handLimit > 0 && !playerImmune.handLimit) ? 5 : p.maxLimit;
+
+            if (p.hand.length <= pLimit) return showToast(`⚠️ 手牌未超過上限 (${pLimit} 張)，目前無法棄牌！`);
+
+            let selectedIdxs = [];
+            p.hand.forEach((c, i) => { if(c.isSelected) selectedIdxs.push(i); });
+            if (selectedIdxs.length !== 1) return showToast("⚠️ 請選取【剛好 1 張】不需要的牌丟棄。");
+            
+            isAnimating = true;
+            let idx = selectedIdxs[0];
+            let el = document.getElementById(`my-card-${idx}`);
+            if(el) el.classList.add("animate-exit");
+
+            setTimeout(() => {
+                let cardToDiscard = p.hand.splice(idx, 1)[0];
+                addToDiscard(cardToDiscard, p.name);
+                showToast(`🗑️ 你丟棄了【${cardToDiscard.name}】。`);
+                isAnimating = false;
+                renderAll();
+            }, 300);
+        }
+
+        async function botTurn(bot) {
+            if (bot.skipDraw) {
+                bot.skipDraw = false;
+            } else {
+                let newCard = drawFromDeck('medical');
+                if(newCard) bot.hand.push(newCard);
+            }
+            renderAll();
+            await sleep(1500);
+            
+            let canAct = true;
+            if (bot.skipOrder || (globalEffects.noAction > 0 && !bot.immuneNoAction)) canAct = false;
+
+            if (canAct) {
+                for(let i=bot.actionHand.length-1; i>=0; i--) {
+                    if(hasPlayedActionThisTurn) break;
+                    let card = bot.actionHand[i];
+                    
+                    if (card.cat === "buff" && Math.random() > 0.4) {
+                        actionDiscardPile.push(bot.actionHand.splice(i, 1)[0]);
+                        hasPlayedActionThisTurn = true;
+                        await playCinematicAsync(card, `🤖 ${bot.name}`, `發動【${card.name}】！`);
+                        
+                        if (card.effectId === "bg") {
+                            let validTargets = players.filter(p => p.id !== bot.id && p.actionHand.length > bot.actionHand.length);
+                            let targetId = validTargets.length > 0 ? validTargets[Math.floor(Math.random() * validTargets.length)].id : 0;
+                            await executeCardEffect(card, bot.id, targetId);
+                        } else if (card.effectId === "duty") {
+                            await executeCardEffect(card, bot.id, bot.id);
+                        } else {
+                            await executeCardEffect(card, bot.id, bot.id);
+                        }
+                        await sleep(1200); 
+                    } 
+                    else if (card.cat === "global" && Math.random() > 0.6) {
+                        actionDiscardPile.push(bot.actionHand.splice(i, 1)[0]);
+                        hasPlayedActionThisTurn = true;
+                        await playCinematicAsync(card, `🤖 ${bot.name}`, `發動全域魔法！`);
+                        await executeCardEffect(card, bot.id, bot.id);
+                        await sleep(1200);
+                    }
+                    else if (card.cat === "attack" && Math.random() > 0.5) {
+                        let validTargets = players.filter(p => p.id !== bot.id);
+                        if (card.effectId === "audit") validTargets = validTargets.filter(p => p.table.length > 0);
+                        if (card.effectId === "tryhard" || card.effectId === "copy") validTargets = validTargets.filter(p => p.hand.length > 0);
+                        
+                        if(validTargets.length === 0) continue;
+                        
+                        let target = validTargets[Math.floor(Math.random() * validTargets.length)];
+                        actionDiscardPile.push(bot.actionHand.splice(i, 1)[0]);
+                        hasPlayedActionThisTurn = true;
+                        
+                        await playCinematicAsync(card, `🤖 ${bot.name}`, `對【${target.name}】發動攻擊！`);
+                        await processAttack(bot.id, target.id, card, async function(finalTargetId) { 
+                            await executeCardEffect(card, bot.id, finalTargetId); 
+                        });
+                        await sleep(1200);
+                    }
+                }
+
+                let bestRecipe = null, bestCardsToPlay = [];
+                let isDNRAdmit = false;
+
+                if (bot.hasDNR) {
+                    for (let recipe of validRecipes) {
+                        let reqTypes = ["cc", "sx", "dx"];
+                        let usedIdxs = [], isMatch = true;
+                        for (let req of reqTypes) {
+                            let vOpts = recipe[req];
+                            let fIdx = bot.hand.findIndex((c, i) => !usedIdxs.includes(i) && c.type !== "Wildcard" && vOpts.includes(c.name));
+                            if (fIdx !== -1) usedIdxs.push(fIdx);
+                            else { isMatch = false; break; }
+                        }
+                        if (isMatch) { bestRecipe = recipe.name; bestCardsToPlay = usedIdxs.map(idx => bot.hand[idx]); isDNRAdmit = true; break; }
+                    }
+                }
+
+                if (!bestRecipe) {
+                    for (let recipe of validRecipes) {
+                        let reqTypes = ["cc", "sx", "dx", "tx"];
+                        if (globalEffects.noTx > 0 && !bot.immuneNoTx) continue; 
+
+                        let wIdxs = bot.hand.map((c, idx) => c.type === "Wildcard" ? idx : -1).filter(i => i !== -1).slice(0, 1);
+                        let usedIdxs = [], isMatch = true;
+
+                        for (let req of reqTypes) {
+                            let vOpts = recipe[req];
+                            let fIdx = bot.hand.findIndex((c, i) => !usedIdxs.includes(i) && c.type !== "Wildcard" && vOpts.includes(c.name));
+                            if (fIdx !== -1) usedIdxs.push(fIdx); 
+                            else if (wIdxs.length > 0) usedIdxs.push(wIdxs.pop());
+                            else { isMatch = false; break; }
+                        }
+                        if (isMatch) { bestRecipe = recipe.name; bestCardsToPlay = usedIdxs.map(idx => bot.hand[idx]); isDNRAdmit = false; break; }
+                    }
+                }
+
+                if (bestRecipe) {
+                    let idxsToRem = bestCardsToPlay.map(c => bot.hand.indexOf(c)).sort((a,b) => b-a);
+                    let caseToAdmit = [];
+                    for (let idx of idxsToRem) caseToAdmit.push(bot.hand.splice(idx, 1)[0]);
+                    
+                    caseToAdmit.recipeName = bestRecipe; bot.table.push(caseToAdmit);
+                    showToast(`📢 ${bot.name} 完美收治了一床【${bestRecipe}】！`);
+                    
+                    if(isDNRAdmit) bot.hasDNR = false; 
+                    if(bot.actionHand.length < 3) { let act = drawFromDeck('action'); if(act) bot.actionHand.push(act); }
+                    renderAll();
+                    await sleep(1500); 
+                }
+            }
+
+            bot.skipOrder = false;
+
+            let bLimit = (globalEffects.handLimit > 0 && !bot.immuneHandLimit) ? 5 : bot.maxLimit;
+            while(bot.hand.length > bLimit) {
+                let dropCard = bot.hand.splice(Math.floor(Math.random() * bot.hand.length), 1)[0];
+                addToDiscard(dropCard, bot.name);
+            }
+            
+            await sleep(800); 
+            await passToNextPlayer();
+        }
+
+        function showTargetModal() {
+            let container = document.getElementById("target-buttons");
+            container.innerHTML = "";
+            for(let i=1; i<=3; i++) {
+                container.innerHTML += `<button class="btn-action" style="background:#2c3e50; font-size:18px;" onclick="selectTarget(${i})">對 ${players[i].name} 發動</button><br>`;
+            }
+            document.getElementById("target-modal").style.display = "block";
+        }
+
+        function cancelTargetSelection() {
+            document.getElementById("target-modal").style.display = "none";
+            pendingActionIdx = -1;
+        }
+
+        async function selectTarget(targetId) {
+            document.getElementById("target-modal").style.display = "none";
+            let idx = pendingActionIdx; pendingActionIdx = -1;
+            if(idx === -1) return;
+
+            let card = players[0].actionHand[idx];
+            hasPlayedActionThisTurn = true; 
+            isAnimating = true;
+            let el = document.getElementById(`my-action-${idx}`);
+            if(el) el.classList.add("animate-exit");
+
+            await sleep(300);
+            actionDiscardPile.push(players[0].actionHand.splice(idx, 1)[0]);
+
+            if (card.cat === "attack" || card.effectId === "skip" || card.effectId === "bg") {
+                await playCinematicAsync(card, `👤 ${players[0].name}`, `對【${players[targetId].name}】發動效果！`);
+                
+                if(card.effectId === "bg") {
+                    await executeCardEffect(card, 0, targetId);
+                } else {
+                    await processAttack(0, targetId, card, async function(finalTargetId) { 
+                        await executeCardEffect(card, 0, finalTargetId); 
+                    });
+                }
+            } else {
+                await playCinematicAsync(card, `👤 ${players[0].name}`, `發動了卡牌！`);
+                await executeCardEffect(card, 0, targetId);
+            }
+            isAnimating = false;
+        }
+
+        let selectCardResolve = null;
+        function showCardSelectionModal(title, msg, cards) {
+            return new Promise(resolve => {
+                selectCardResolve = resolve;
+                document.getElementById("select-card-title").innerText = title;
+                document.getElementById("select-card-msg").innerText = msg;
+                
+                let container = document.getElementById("select-card-container");
+                container.innerHTML = cards.map((c, i) => {
+                    let imgHtml = generateImgHtml(c);
+                    return `
+                    <div class="card type-${c.type}" style="cursor:pointer; width: 100px; min-height: 130px; transform: none; padding: 10px;" onclick="resolveSelectCard(${i})">
+                        ${imgHtml}
+                        <div class="card-title">${c.name}</div>
+                        <div class="card-type-badge">${typeMap[c.type]}</div>
+                    </div>
+                    `;
+                }).join("");
+                
+                document.getElementById("select-card-modal").style.display = "block";
+            });
+        }
+
+        function resolveSelectCard(index) {
+            document.getElementById("select-card-modal").style.display = "none";
+            if(selectCardResolve) selectCardResolve(index);
+        }
+
+        let exchangeResolve = null;
+        let exHandIdx = -1;
+        let exDiscardIdx = -1;
+
+        function showExchangeModal(handCards, targetCards, isCopy=false, targetName="", hideTargetPanel=false) {
+            return new Promise(resolve => {
+                exchangeResolve = resolve;
+                exHandIdx = -1;
+                exDiscardIdx = -1;
+                window.currentExDiscards = targetCards; 
+                
+                if (hideTargetPanel) {
+                    document.getElementById("exchange-modal-desc").innerText = `請點擊選擇你要丟棄的手牌`;
+                    document.getElementById("exchange-right-panel").style.display = "none";
+                    document.getElementById("exchange-left-title").innerText = "點擊要丟棄的牌";
+                } else {
+                    document.getElementById("exchange-right-panel").style.display = "block";
+                    if (isCopy) {
+                        document.getElementById("exchange-modal-desc").innerText = `請選擇你要送出的牌，以及你要從 ${targetName} 手上抽走的牌`;
+                        document.getElementById("exchange-target-title").innerText = `2. ${targetName} 的手牌`;
+                    } else {
+                        document.getElementById("exchange-modal-desc").innerText = `請選擇你要丟棄的手牌，以及要撿回的棄牌`;
+                        document.getElementById("exchange-target-title").innerText = `2. 撿回兩回合內棄牌`;
+                    }
+                }
+
+                renderExchangeModal(isCopy, hideTargetPanel);
+                document.getElementById("exchange-card-modal").style.display = "block";
+            });
+        }
+
+        function renderExchangeModal(isCopy=false, hideTargetPanel=false) {
+            let hCont = document.getElementById("exchange-hand-container");
+            hCont.innerHTML = players[0].hand.map((c, i) => {
+                let cls = `card type-${c.type} ${exHandIdx === i ? 'selected' : ''}`;
+                let imgHtml = generateImgHtml(c);
+                return `<div class="${cls}" onclick="exHandIdx=${i}; renderExchangeModal(${isCopy}, ${hideTargetPanel})">
+                    ${imgHtml}<div class="card-title">${c.name}</div></div>`;
+            }).join("");
+
+            if (!hideTargetPanel) {
+                let dCont = document.getElementById("exchange-discard-container");
+                dCont.innerHTML = window.currentExDiscards.map((c, i) => {
+                    let cls = `card type-${c.type} ${exDiscardIdx === i ? 'selected' : ''}`;
+                    let content = isCopy ? `<div class="card-title" style="font-size:30px; margin-top:20px;">❓</div>` : `${generateImgHtml(c)}<div class="card-title">${c.name}</div>`;
+                    let displayType = isCopy ? "Wildcard" : c.type; 
+
+                    return `<div class="card type-${displayType} ${exDiscardIdx === i ? 'selected' : ''}" onclick="exDiscardIdx=${i}; renderExchangeModal(${isCopy}, false)">${content}</div>`;
+                }).join("");
+            }
+        }
+
+        function confirmExchange() {
+            let rightPanelHidden = document.getElementById("exchange-right-panel").style.display === "none";
+            if(exHandIdx === -1 || (!rightPanelHidden && exDiscardIdx === -1)) return alert("請正確選擇卡牌！");
+            document.getElementById("exchange-card-modal").style.display = "none";
+            if(exchangeResolve) exchangeResolve({ handIdx: exHandIdx, discardIdx: exDiscardIdx });
+        }
+        function cancelExchange() {
+            document.getElementById("exchange-card-modal").style.display = "none";
+            if(exchangeResolve) exchangeResolve(null);
+        }
+
+        async function playActionCard(index) {
+            if (isAnimating || currentPlayerIndex !== 0) return;
+            if (playerImmune.skipOrder) return showToast("❌ 受負面狀態影響，你本回合無法打功能牌！");
+            if (globalEffects.noAction > 0 && !playerImmune.noAction) return showToast("❌ 醫院全域管制中，禁止打出功能牌！");
+            if (hasPlayedActionThisTurn) return showToast("⚠️ 一回合只能主動打出 1 張功能牌！");
+            
+            let card = players[0].actionHand[index];
+            if(card.cat === "defend") return showToast("🛡️ 防禦牌只能在受到攻擊時自動發動喔！");
+            
+            if(card.cat === "attack" || card.effectId === "bg" || card.effectId === "skip") {
+                pendingActionIdx = index;
+                showTargetModal();
+            } else {
+                if (card.effectId === "chart") {
+                    let recentDiscards = discardPile.filter(c => (completedRounds - c.roundDiscarded) <= 2);
+                    if(players[0].hand.length === 0) return showToast("⚠️ 手上沒有醫學牌可以棄置！");
+                    if(recentDiscards.length === 0) return showToast("⚠️ 兩回合內沒有任何棄牌可以撿回！");
+                }
+                if (card.effectId === "duty" && players[0].hand.length === 0) {
+                    return showToast("⚠️ 你手上沒有醫學牌可以作為代價丟棄！");
+                }
+                
+                hasPlayedActionThisTurn = true; 
+                isAnimating = true;
+                let el = document.getElementById(`my-action-${index}`);
+                if(el) el.classList.add("animate-exit");
+                await sleep(300);
+                actionDiscardPile.push(players[0].actionHand.splice(index, 1)[0]);
+                await playCinematicAsync(card, `👤 ${players[0].name}`, `發動了卡牌！`);
+                await executeCardEffect(card, 0, 0); 
+                isAnimating = false;
+            }
+        }
+
+        async function processAttack(attackerId, targetId, card, effectCallback, depth = 0) {
+            if (depth > 4) return; 
+            let t = players[targetId];
+            
+            let reflectIdx = t.actionHand.findIndex(c => c.effectId === "reflect");
+            let transferIdx = t.actionHand.findIndex(c => c.effectId === "transfer");
+            let pmoffIdx = t.actionHand.findIndex(c => c.effectId === "pmoff");
+            let defIdx = reflectIdx !== -1 ? reflectIdx : (transferIdx !== -1 ? transferIdx : pmoffIdx);
+
+            if (t.isHuman) {
+                if (defIdx !== -1) {
+                    if (confirm(`⚠️ 【${players[attackerId].name}】對你使用了【${card.name}】！\n要發動防禦牌【${t.actionHand[defIdx].name}】嗎？`)) {
+                        let defCard = t.actionHand.splice(defIdx, 1)[0];
+                        actionDiscardPile.push(defCard);
+                        await playCinematicAsync(defCard, `👤 ${t.name}`, `發動防禦！`);
+                        
+                        if (defCard.effectId === "reflect") { 
+                            showToast(`🛡️ 反彈！攻擊轉向原發動者！`); 
+                            await effectCallback(attackerId); 
+                        } else if (defCard.effectId === "transfer") {
+                            let nextTarget = (targetId + 1) % 4;
+                            showToast(`🛡️ 交班！攻擊轉移給 ${players[nextTarget].name}！`);
+                            await processAttack(attackerId, nextTarget, card, effectCallback, depth + 1);
+                        } else { 
+                            showToast(`🛡️ PM OFF 抵銷！雙方各抽 1 張牌！`);
+                            let n1=drawFromDeck('medical'); if(n1) players[attackerId].hand.push(Object.assign({isSelected:false, isNew:true}, n1));
+                            let n2=drawFromDeck('medical'); if(n2) t.hand.push(Object.assign({isSelected:false, isNew:true}, n2));
+                        }
+                        return renderAll();
+                    }
+                }
+                await effectCallback(targetId);
+            } else {
+                if (defIdx !== -1) {
+                    let defCard = t.actionHand.splice(defIdx, 1)[0];
+                    actionDiscardPile.push(defCard);
+                    await playCinematicAsync(defCard, `🤖 ${t.name}`, `發動防禦！`);
+                    
+                    if (defCard.effectId === "reflect") { 
+                        showToast(`🛡️ ${t.name} 發動反彈！攻擊彈回去了！`); 
+                        await effectCallback(attackerId); 
+                    } else if (defCard.effectId === "transfer") {
+                        let nextTarget = (targetId + 1) % 4;
+                        showToast(`🛡️ ${t.name} 發動交班！攻擊轉移給 ${players[nextTarget].name}！`);
+                        await processAttack(attackerId, nextTarget, card, effectCallback, depth + 1);
+                    } else { 
+                        showToast(`🛡️ ${t.name} PM OFF 抵銷了攻擊！`);
+                        let n1=drawFromDeck('medical'); if(n1) players[attackerId].hand.push(Object.assign({isSelected:false, isNew:true}, n1));
+                        let n2=drawFromDeck('medical'); if(n2) t.hand.push(Object.assign({isSelected:false, isNew:true}, n2));
+                    }
+                    return renderAll();
+                }
+                await effectCallback(targetId);
+            }
+        }
+
+        async function executeCardEffect(card, uId, tId) {
+            let u = players[uId];
+            let t = players[tId];
+
+            switch(card.effectId) {
+                case "seminar": u.maxLimit++; showToast(`🧑‍🏫 ${u.name} 手牌上限 +1！`); break;
+                case "dnr": u.hasDNR = true; showToast(`🛑 ${u.name} 簽署 DNR！`); break;
+                case "call": 
+                    let d1 = [drawFromDeck('medical'), drawFromDeck('medical'), drawFromDeck('medical')].filter(Boolean);
+                    if(d1.length===0) { showToast("牌庫空了！"); break; }
+                    if(u.isHuman) {
+                        let pick1 = await showCardSelectionModal("📞 Call上線", "請選擇 1 張保留加入手牌，其餘將洗回牌庫：", d1);
+                        let kept1 = d1.splice(pick1, 1)[0];
+                        kept1.isSelected=false; kept1.isNew=true; u.hand.push(kept1);
+                        d1.forEach(c => medicalDeck.push(c));
+                        medicalDeck.sort(() => Math.random() - 0.5); 
+                        showToast(`📞 選擇了 1 張牌，其餘已洗回！`);
+                    } else {
+                        let pick1 = Math.floor(Math.random() * d1.length);
+                        let kept1 = d1.splice(pick1, 1)[0];
+                        kept1.isSelected=false; kept1.isNew=true; u.hand.push(kept1);
+                        d1.forEach(c => medicalDeck.push(c));
+                        medicalDeck.sort(() => Math.random() - 0.5);
+                        showToast(`🤖 ${u.name} 檢視了牌堆頂端並拿走 1 張！`);
+                    }
+                    break;
+                case "combine":
+                    let d2 = [drawFromDeck('medical'), drawFromDeck('medical')].filter(Boolean);
+                    if(d2.length===0) { showToast("牌庫空了！"); break; }
+                    if(u.isHuman) {
+                        let pick2 = await showCardSelectionModal("🔬 Combine", "請選擇 1 張保留加入手牌，另 1 張將直接棄置：", d2);
+                        let kept2 = d2.splice(pick2, 1)[0];
+                        kept2.isSelected=false; kept2.isNew=true; u.hand.push(kept2);
+                        d2.forEach(c => addToDiscard(c, u.name)); 
+                        showToast(`🔬 選擇了 1 張牌，另一張已丟棄！`);
+                    } else {
+                        let pick2 = Math.floor(Math.random() * d2.length);
+                        let kept2 = d2.splice(pick2, 1)[0];
+                        kept2.isSelected=false; kept2.isNew=true; u.hand.push(kept2);
+                        d2.forEach(c => addToDiscard(c, u.name));
+                        showToast(`🤖 ${u.name} 檢視了牌堆頂端並棄置了 1 張牌！`);
+                    }
+                    break;
+                case "chart":
+                    let recentDiscards = discardPile.filter(c => (completedRounds - c.roundDiscarded) <= 2);
+                    if(u.hand.length === 0 || recentDiscards.length === 0) break; 
+                    
+                    if(u.isHuman) {
+                        let ex = await showExchangeModal(u.hand, recentDiscards, false);
+                        if (!ex) {
+                            showToast("取消發動補病歷。");
+                            let returnedCard = actionDiscardPile.pop();
+                            returnedCard.isNew = true; 
+                            u.actionHand.push(returnedCard); 
+                            hasPlayedActionThisTurn = false;
+                            break; 
+                        }
+                        let dropCard = u.hand.splice(ex.handIdx, 1)[0];
+                        let targetCard = recentDiscards[ex.discardIdx];
+                        let actualIdx = discardPile.indexOf(targetCard);
+                        let pickupCard = discardPile.splice(actualIdx, 1)[0];
+                        
+                        addToDiscard(dropCard, u.name);
+                        pickupCard.isSelected=false; pickupCard.isNew=true;
+                        u.hand.push(pickupCard);
+                        showToast(`📝 補病歷成功！用【${dropCard.name}】換回了【${pickupCard.name}】`);
+                    } else {
+                        let hIdx = Math.floor(Math.random() * u.hand.length);
+                        let dIdx = Math.floor(Math.random() * recentDiscards.length);
+                        let dropCard = u.hand.splice(hIdx, 1)[0];
+                        let targetCard = recentDiscards[dIdx];
+                        let actualIdx = discardPile.indexOf(targetCard);
+                        let pickupCard = discardPile.splice(actualIdx, 1)[0];
+                        
+                        addToDiscard(dropCard, u.name);
+                        pickupCard.isSelected=false; pickupCard.isNew=true;
+                        u.hand.push(pickupCard);
+                        showToast(`🤖 ${u.name} 發動補病歷，從棄牌區撿走了一張牌！`);
+                    }
+                    break;
+
+                case "report": 
+                    t.isRevealed = true; 
+                    showToast(`📢 鎖定目標！【${t.name}】的手牌已被公開，直到本回合結束！`); 
+                    break;
+                    
+                case "tryhard":
+                    if (t.hand.length > 0) {
+                        let ccIdx = t.hand.findIndex(c => c.type === "CC");
+                        let dropIdx = ccIdx !== -1 ? ccIdx : Math.floor(Math.random() * t.hand.length);
+                        addToDiscard(t.hand.splice(dropIdx, 1)[0], t.name);
+                        showToast(`👺 ${t.name} 被迫棄牌！`);
+                        let n3=drawFromDeck('medical'); if(n3) t.hand.push(Object.assign({isSelected:false, isNew:true}, n3));
+                    } else showToast(`${t.name} 沒牌可丟！`); break;
+                case "audit":
+                    if (t.table.length > 0) {
+                        let tCase = t.table.splice(0, 1)[0]; 
+                        let txIndex = tCase.findIndex(c => c.type === "Tx" || c.type === "Wildcard"); 
+                        if(txIndex !== -1) addToDiscard(tCase.splice(txIndex, 1)[0], t.name); 
+                        tCase.forEach(c => { c.isSelected=false; t.hand.push(c); });
+                        showToast(`✂️ ${t.name} 的病床被摧毀，且被拔除了治療牌！`);
+                    } else showToast(`${t.name} 沒有病人可核刪！`); break;
+                
+                case "copy":
+                    if (u.hand.length > 0 && t.hand.length > 0) {
+                        if (u.isHuman) {
+                            let ex = await showExchangeModal(u.hand, t.hand, true, t.name);
+                            if (!ex) {
+                                showToast("取消發動抄模板。");
+                                let returnedCard = actionDiscardPile.pop(); returnedCard.isNew = true; 
+                                u.actionHand.push(returnedCard); hasPlayedActionThisTurn = false;
+                                break;
+                            }
+                            let uCard = u.hand.splice(ex.handIdx, 1)[0];
+                            let tCard = t.hand.splice(ex.discardIdx, 1)[0];
+                            uCard.isSelected = false; tCard.isSelected = false; uCard.isNew = true; tCard.isNew = true; 
+                            u.hand.push(tCard); t.hand.push(uCard);
+                            showToast(`📝 你用【${uCard.name}】換來了【${tCard.name}】！`);
+                        } else {
+                            let uCard = u.hand.splice(Math.floor(Math.random()*u.hand.length), 1)[0];
+                            let tCard = t.hand.splice(Math.floor(Math.random()*t.hand.length), 1)[0];
+                            uCard.isSelected = false; tCard.isSelected = false; uCard.isNew = true; tCard.isNew = true; 
+                            u.hand.push(tCard); t.hand.push(uCard);
+                            showToast(`📝 🤖 ${u.name} 與 ${t.name} 互換了 1 張手牌！`);
+                        }
+                    } else showToast("雙方手牌不足無法交換！"); break;
+                
+                case "chaos":
+                    let uHandCount = u.hand.length;
+                    players.forEach(p => {
+                        let dropCount = Math.min(uHandCount, p.hand.length);
+                        for(let i=0; i<dropCount; i++) {
+                            addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                        }
+                        for(let i=0; i<dropCount; i++) {
+                            let c1 = drawFromDeck('medical'); if(c1) { c1.isSelected=false; c1.isNew=true; p.hand.push(c1); }
+                        }
+                    });
+                    showToast(`🌪️ 大混亂生效！所有人被迫更換了 ${uHandCount} 張牌！`); break;
+
+                case "shift":
+                    players.forEach(p => {
+                        let count = p.actionHand.length;
+                        while(p.actionHand.length > 0) actionDiscardPile.push(p.actionHand.pop());
+                        for(let i=0; i<count; i++) { let a=drawFromDeck('action'); if(a) p.actionHand.push(a); }
+                    });
+                    
+                    if (u.actionHand.length < 3) {
+                        let extraAct = drawFromDeck('action');
+                        if (extraAct) { extraAct.isNew = true; u.actionHand.push(extraAct); }
+                        showToast(`🔄 換科生效！所有人重新抽取功能牌，且 ${u.name} 額外獲得 1 張功能牌！`);
+                    } else {
+                        showToast(`🔄 換科生效！所有人重新抽取功能牌！`);
+                    }
+                    break;
+                
+                case "choose":
+                    players.forEach(p => {
+                        let m = drawFromDeck('medical'); if(m) p.hand.push(Object.assign({isSelected:false, isNew:true}, m));
+                        if(p.hand.length > 0) addToDiscard(p.hand.splice(Math.floor(Math.random()*p.hand.length), 1)[0], p.name);
+                    });
+                    showToast(`🎓 選科生效！所有人各抽 1 張並棄 1 張！`); break;
+
+                case "bg":
+                    let tActionCount = t.actionHand.length;
+                    while (u.actionHand.length < tActionCount && u.actionHand.length < 3) {
+                        let act = drawFromDeck('action');
+                        if(act) { act.isNew = true; u.actionHand.push(act); }
+                    }
+                    showToast(`😎 靠著 BG！${u.name} 把功能牌抽到了 ${u.actionHand.length} 張！`);
+                    break;
+
+                case "skip":
+                    t.skipTurn = true;
+                    showToast(`🚫 ${t.name} 被指派了核心課程，下一回合被跳過！`);
+                    break;
+
+                case "flag":
+                    showToast(`🚨 立 Flag 成功！今天沒事... 醫院爆發緊急事件了！`);
+                    // 不重置 nextEventRound，直接強制觸發一次事件
+                    await triggerRandomEvent();
+                    break;
+
+                case "duty":
+                    if(u.hand.length === 0) break;
+                    
+                    if (u.isHuman) {
+                        let ex = await showExchangeModal(u.hand, [], false, "", true); 
+                        if (!ex && exHandIdx === -1) {
+                            showToast("取消發動我愛加班。");
+                            let returnedCard = actionDiscardPile.pop(); returnedCard.isNew = true; 
+                            u.actionHand.push(returnedCard); hasPlayedActionThisTurn = false;
+                            break;
+                        }
+                        
+                        let dummyOpts = [
+                            { type: "CC", name: "抽主訴牌", img: "" }, { type: "Sx", name: "抽症狀牌", img: "" },
+                            { type: "Dx", name: "抽診斷牌", img: "" }, { type: "Tx", name: "抽治療牌", img: "" }
+                        ];
+                        let typePickIdx = await showCardSelectionModal("🏥 值班檢索", "請選擇你想要從牌堆中抽取的牌種類：", dummyOpts);
+                        let targetType = dummyOpts[typePickIdx].type;
+
+                        let dropCard = u.hand.splice(exHandIdx, 1)[0];
+                        addToDiscard(dropCard, u.name);
+
+                        let foundIdx = medicalDeck.findIndex(c => c.type === targetType);
+                        if (foundIdx !== -1) {
+                            let drawn = medicalDeck.splice(foundIdx, 1)[0];
+                            drawn.isSelected = false; drawn.isNew = true;
+                            u.hand.push(drawn);
+                            medicalDeck.sort(() => Math.random() - 0.5); 
+                            showToast(`🏥 我愛加班！丟棄了【${dropCard.name}】，並抽出了【${drawn.name}】！`);
+                        } else {
+                            showToast(`⚠️ 牌堆裡已經沒有 ${targetType} 類型的牌了！`);
+                        }
+                    } else {
+                        let dropCard = u.hand.splice(Math.floor(Math.random() * u.hand.length), 1)[0];
+                        addToDiscard(dropCard, u.name);
+
+                        let needs = ["CC", "Sx", "Dx", "Tx"];
+                        let targetType = needs[Math.floor(Math.random() * needs.length)];
+                        let foundIdx = medicalDeck.findIndex(c => c.type === targetType);
+                        if (foundIdx !== -1) {
+                            let drawn = medicalDeck.splice(foundIdx, 1)[0];
+                            drawn.isSelected = false; drawn.isNew = true;
+                            u.hand.push(drawn);
+                            medicalDeck.sort(() => Math.random() - 0.5);
+                            showToast(`🤖 ${u.name} 加班結束，從牌堆檢索了一張卡牌！`);
+                        }
+                    }
+                    break;
+            }
+            renderAll();
+        }
+
+        function renderAll() {
+            let p = players[0];
+            
+            let hc = document.getElementById("hand-cards"); hc.innerHTML = "";
+            p.hand.forEach((c, i) => {
+                let cls = `card type-${c.type} ${c.isSelected ? "selected" : ""}`;
+                if (c.isNew) { cls += " animate-enter"; c.isNew = false; }
+                let imgHtml = generateImgHtml(c);
+                hc.innerHTML += `<div id="my-card-${i}" class="${cls}" draggable="true" ondragstart="dragStart(event, ${i})" ondragover="dragOver(event)" ondrop="drop(event, ${i})" onclick="toggleCardSelection(${i})">
+                    ${imgHtml}<div class="card-title">${c.name}</div><div class="card-type-badge">${typeMap[c.type]}</div></div>`;
+            });
+            
+            let drawBtn = document.getElementById("draw-btn");
+            if (hasDrawnThisTurn) { 
+                drawBtn.classList.add("disabled"); 
+                drawBtn.innerHTML = `📦 已抽牌 <span style="font-size:11px;">(${medicalDeck.length}張)</span>`; 
+            } else { 
+                drawBtn.classList.remove("disabled"); 
+                drawBtn.innerHTML = `📦 1. 抽牌 <span style="font-size:11px;">(${medicalDeck.length}張)</span>`; 
+            }
+
+            let pLimit = (globalEffects.handLimit > 0 && !playerImmune.handLimit) ? 5 : p.maxLimit;
+            let btnClass = (currentPlayerIndex !== 0 || p.hand.length > pLimit || playerImmune.skipOrder) ? 'btn-action disabled' : 'btn-action';
+            document.getElementById("end-btn").className = btnClass;
+            document.getElementById("medical-count-display").innerHTML = `<span style="color:${p.hand.length>pLimit?'red':'#333'}">(${p.hand.length}/${pLimit})</span>`;
+            document.getElementById("dnr-status").innerText = p.hasDNR ? "(DNR生效)" : "";
+            document.getElementById("act-deck-count").innerText = actionDeck.length;
+
+            let ac = document.getElementById("action-hand-cards"); ac.innerHTML = "";
+            p.actionHand.forEach((c, i) => {
+                let cls = c.isNew ? "card type-Action animate-enter" : "card type-Action"; c.isNew = false;
+                let imgHtml = generateImgHtml(c);
+                ac.innerHTML += `<div id="my-action-${i}" class="${cls}" onclick="playActionCard(${i})">
+                    ${imgHtml}<div class="card-title">${c.name}</div><div class="action-desc">${c.desc}</div></div>`;
+            });
+            document.getElementById("action-count-display").innerText = `(${p.actionHand.length}/3)`;
+
+            let dc = document.getElementById("discard-pile");
+            if(discardPile.length > 0) {
+                let top = discardPile[discardPile.length-1];
+                let imgHtml = generateImgHtml(top);
+                dc.innerHTML = `<div style="font-size:11px; margin-bottom:2px;">👇 最新棄牌</div><div class="card type-${top.type}" style="margin:0; width:65px; padding:4px; pointer-events:none; min-height:70px;">${imgHtml}<div class="card-title" style="font-size:11px;">${top.name}</div></div><div style="font-size:9px; margin-top:2px; color:#3498db; font-weight:bold;">(由 ${top.discarder} 丟棄)</div>`;
+            } else { dc.innerHTML = `🗑️ 醫學棄牌區`; }
+
+            document.getElementById("table-cards").innerHTML = p.table.map((c, i) => `<div style="margin-bottom:2px;">🛏️ 床位 ${i+1} [${c.recipeName}]: ` + c.map(card => `<span class="bot-case-card type-${card.type}">${typeMap[card.type]} ${card.name}</span>`).join(" + ") + `</div>`).join("") || "目前無病人";
+
+            let oppsContainer = document.getElementById("opponents-container");
+            oppsContainer.innerHTML = "";
+            for (let i = 1; i <= 3; i++) {
+                let bot = players[i];
+                let isTurn = currentPlayerIndex === i ? "active-turn" : "";
+                let status = bot.hasDNR ? "(DNR生效)" : (bot.skipTurn ? "(被跳過)" : "");
+                
+                let botHandHtml = bot.isRevealed ? 
+                    `<div class="revealed-box" onclick="showRevealedHand(${bot.id})" title="點擊放大查看隱藏手牌">` +
+                    bot.hand.map(c => `<div class="bot-card-back" style="background-color:#e67e22; border-color:#d35400;">👁️</div>`).join("") +
+                    `</div>` : 
+                    bot.hand.map(c => { let cls = c.isNew ? "animate-enter" : ""; c.isNew=false; return `<div class="bot-card-back ${cls}">🏥</div>`;}).join("");
+                
+                let botTableHtml = bot.table.map((c, idx) => `<div style="margin-top:2px;">🛏️ ${idx+1} [${c.recipeName}]</div>`).join("") || "無病人";
+                let botLimitHtml = (globalEffects.handLimit > 0 && !bot.immuneHandLimit) ? `(上限 5)` : "";
+
+                oppsContainer.innerHTML += `
+                    <div class="bot-area ${isTurn}">
+                        <h3 style="margin:2px 0; font-size: 13px;">🤖 ${bot.name} <span style="font-size:10px;color:red;">${status}</span></h3>
+                        <div style="font-size:11px; background:#fff; padding:3px; border-radius:5px; margin-bottom:3px; min-height:20px;">
+                            <strong>病床區：</strong><br>${botTableHtml}
+                        </div>
+                        <div style="font-size:10px;">醫學牌: ${bot.hand.length} <span style="color:red">${botLimitHtml}</span> | 功能牌: ${bot.actionHand.length}</div>
+                        <div style="margin-top:2px;">${botHandHtml}</div>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
